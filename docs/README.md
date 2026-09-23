@@ -100,6 +100,7 @@ mobile/docs/
 │   └── requirements-matrix.md                 # Traceability: Requirement → Screen → API → DB → Test
 │
 └── 12-roadmap/
+    ├── implementation-roadmap.md              # Phased implementation progress, versions & DoD gates
     └── future-phases.md                       # Scope and architecture readiness for Phases 2–5
 ```
 
