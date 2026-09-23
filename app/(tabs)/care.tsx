@@ -1,17 +1,26 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { FileText, Bot, Settings } from 'lucide-react-native';
+import { FileText, Bot, Settings, LogOut } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
 import { Text } from '../../src/components/ui/Text';
 import { Card } from '../../src/components/ui/Card';
 import { Avatar } from '../../src/components/ui/Avatar';
 import { Badge } from '../../src/components/ui/Badge';
+import { Button } from '../../src/components/ui/Button';
 import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
+import { useAuthStore } from '../../src/store/authStore';
+import { authService } from '../../src/lib/auth/authService';
 
 export default function CareScreen() {
+  const { user, isAuthenticated } = useAuthStore();
+
+  const handleSignOut = async () => {
+    await authService.signOut();
+  };
+
   return (
     <Screen scrollable>
       <View style={styles.header}>
@@ -24,15 +33,30 @@ export default function CareScreen() {
       {/* User Profile Card */}
       <Card style={styles.profileCard}>
         <View style={styles.profileRow}>
-          <Avatar name="Guest User" size={52} />
+          <Avatar name={user?.fullName || 'Guest User'} source={user?.avatarUrl} size={52} />
           <View style={styles.profileInfo}>
-            <Heading level={4}>Pet Parent Portal</Heading>
+            <Heading level={4}>{user?.fullName || 'Pet Parent'}</Heading>
             <Text variant="bodySm" color={colors.muted}>
-              Authentication connects in Phase 2
+              {user?.email || 'Not authenticated'}
             </Text>
           </View>
-          <Badge variant="verified" label="MVP Shell" />
+          {isAuthenticated ? (
+            <Badge variant="verified" label="Active" />
+          ) : (
+            <Badge variant="scheduled" label="Guest" />
+          )}
         </View>
+
+        {isAuthenticated ? (
+          <Button
+            title="Sign Out"
+            onPress={handleSignOut}
+            variant="outline"
+            size="sm"
+            leftIcon={<LogOut size={16} color={colors.destructive} />}
+            style={styles.signOutBtn}
+          />
+        ) : null}
       </Card>
 
       {/* Care Quick Links */}
@@ -101,6 +125,11 @@ const styles = StyleSheet.create({
   profileInfo: {
     flex: 1,
     marginLeft: spacing.md,
+  },
+  signOutBtn: {
+    marginTop: spacing.md,
+    borderColor: colors.destructive,
+    alignSelf: 'flex-start',
   },
   section: {
     marginBottom: spacing.xl,

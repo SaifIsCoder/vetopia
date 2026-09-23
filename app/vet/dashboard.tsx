@@ -1,34 +1,71 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Stethoscope } from 'lucide-react-native';
+import { Stethoscope, LogOut, User } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
 import { Text } from '../../src/components/ui/Text';
 import { Button } from '../../src/components/ui/Button';
+import { Card } from '../../src/components/ui/Card';
+import { Badge } from '../../src/components/ui/Badge';
 import { EmptyState } from '../../src/components/feedback/EmptyState';
 import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
+import { radii } from '../../src/theme/radii';
+import { useAuthStore } from '../../src/store/authStore';
+import { authService } from '../../src/lib/auth/authService';
 
 export default function VetDashboardScreen() {
-  const router = useRouter();
+  const { user } = useAuthStore();
+
+  const handleSignOut = async () => {
+    await authService.signOut();
+  };
 
   return (
     <Screen style={styles.container}>
       <View style={styles.header}>
-        <Heading level={2}>Veterinarian Dashboard</Heading>
-        <Text variant="bodySm" color={colors.muted}>
-          Availability windows, appointment queue & clinical notes
-        </Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text variant="caption" color={colors.inkSoft} style={styles.kicker}>
+              DOCTOR PORTAL
+            </Text>
+            <Heading level={2}>{user?.fullName || 'Veterinarian'}</Heading>
+          </View>
+          <Badge label="Verified Vet" variant="verified" />
+        </View>
+
+        <Card style={styles.profileCard}>
+          <View style={styles.profileRow}>
+            <View style={styles.avatar}>
+              <User size={24} color={colors.primaryDark} />
+            </View>
+            <View style={styles.profileInfo}>
+              <Text variant="bodyMd" color={colors.ink} style={styles.profileEmail}>
+                {user?.email}
+              </Text>
+              <Text variant="caption" color={colors.muted}>
+                Active Role: Veterinarian (Clinical Provider)
+              </Text>
+            </View>
+          </View>
+        </Card>
       </View>
 
       <EmptyState
-        title="Doctor Portal"
-        description="Weekly recurring schedule manager and appointment queue will be implemented in Phase 4 & 5."
+        title="Doctor Consultation Portal"
+        description="Weekly recurring schedule manager, patient queue, and digital prescription pad will be connected in Phase 4 & 5."
         icon={<Stethoscope size={48} color={colors.primaryDark} />}
       />
 
-      <Button title="Back" onPress={() => router.back()} variant="outline" />
+      <View style={styles.actions}>
+        <Button
+          title="Sign Out"
+          onPress={handleSignOut}
+          variant="outline"
+          leftIcon={<LogOut size={18} color={colors.destructive} />}
+          style={styles.signOutButton}
+        />
+      </View>
     </Screen>
   );
 }
@@ -40,5 +77,46 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: spacing.lg,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  kicker: {
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  profileCard: {
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.cream,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileEmail: {
+    fontWeight: '600',
+  },
+  actions: {
+    gap: spacing.sm,
+  },
+  signOutButton: {
+    width: '100%',
+    borderColor: colors.destructive,
   },
 });

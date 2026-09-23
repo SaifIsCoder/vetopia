@@ -108,6 +108,69 @@ In strict accordance with project rules, zero functional MVP business modules we
 
 ---
 
-### 5. Next Phase
-**Phase 2 — MVP-01 Authentication & RBAC**  
-*Prerequisites:* Phase 1 review and formal sign-off.
+## Phase 2 — MVP-01 Authentication & RBAC
+
+**Status:** `COMPLETED`  
+**Execution Date:** 2026-09-23  
+**Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · Supabase Auth
+
+### 1. Objective
+Deliver the complete, production-ready **MVP-01 Authentication & RBAC** module on top of the Phase 1 mobile foundation, integrating authoritatively with Supabase Auth, PostgreSQL Row Level Security, and local biometric security.
+
+---
+
+### 2. Architecture Reconciliation
+* **Authoritative Auth Provider:** Reconciled documentation with active system architecture. The Vetopia platform uses **Supabase Auth** (`@supabase/supabase-js`) directly, backed by `auth.users`, `public.profiles`, `public.user_roles`, and `public.vet_profiles`. No separate Express authentication server is used.
+* **Token Management & Injection:** `ApiClient` dynamically retrieves the active Supabase JWT `access_token` and injects `Authorization: Bearer <token>` on all authenticated requests. Automatic 401 interceptor rotates tokens via `supabase.auth.refreshSession()` with a singleton lock preventing duplicate refresh requests.
+* **Hardware-Backed Session Storage:** Implemented `SecureStorageAdapter` utilizing `expo-secure-store` with chunking (threshold: 1800 bytes) to protect against Android KeyStore's 2048-byte limit.
+* **Security & RLS Invariant:** Client never handles or stores `service_role` keys, database passwords, or JWT secrets. Public mobile variables strictly limited to `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, and `EXPO_PUBLIC_APP_ENV`. Privilege escalation to `admin` or `super_admin` is blocked client-side and enforced by PostgreSQL RLS.
+
+---
+
+### 3. Implemented Scope
+* **Authentication Screens (`app/(auth)/`):**
+  * `welcome.tsx` (`SCR-AUTH-001`): Value proposition carousel with 3 feature slides, indicators, and navigation triggers.
+  * `login.tsx` (`SCR-AUTH-002`): Email/password inputs with field validation, secure text toggle, biometric unlock trigger, forgot-password navigation, and inline error banner.
+  * `register.tsx` (`SCR-AUTH-003`): Role switcher (`pet_parent` vs `vet`), doctor-specific specialty and consultation fee inputs, terms acceptance, validation, and authoritative Supabase registration.
+  * `forgot-password.tsx` (`SCR-AUTH-004`): Password recovery email trigger with dedicated confirmation state.
+  * `onboarding.tsx` (`SCR-AUTH-005`): Two-step onboarding wizard for profile personalization and first pet or clinic setup with skip support.
+* **Application Lifecycle & Gatekeeper (`app/_layout.tsx`, `app/index.tsx`):**
+  * Session bootstrap on cold launch with branded splash loader.
+  * Realtime `onAuthStateChange` listener synchronizing session and profile state.
+  * Route guard protecting `(tabs)`, `vet`, `booking`, `consult`, `pets`, `prescriptions`, `settings` from unauthenticated users.
+  * Role-aware routing: routes `pet_parent` to `/(tabs)` and `vet` to `/vet/dashboard`; restricts `pet_parent` from doctor portal.
+  * Enforces onboarding completion before granting access to protected dashboards.
+* **State & Services (`src/lib/`, `src/store/`):**
+  * `useAuthStore`: Enhanced Zustand store tracking `session`, `user`, `role`, `roles`, `onboardingCompleted`, `biometricAvailable`, and `biometricsEnabled`.
+  * `authService`: Production methods for `register`, `login`, `signOut`, `requestPasswordReset`, `loadUserProfile`, `refreshSession`, and `completeOnboarding`.
+  * `biometrics`: Local biometric hardware detection, enrollment check, and authentication prompts via `expo-local-authentication`.
+  * `SecureStorageAdapter`: Custom storage engine for Supabase Auth in React Native.
+* **Role Dashboards (`app/vet/dashboard.tsx`, `app/(tabs)/care.tsx`):**
+  * `vet/dashboard.tsx`: Doctor portal header displaying verified doctor profile and Sign Out button.
+  * `(tabs)/care.tsx`: Pet Parent profile summary card with status badge and Sign Out button.
+
+---
+
+### 4. Dependency Versions Added
+```text
+expo-secure-store: ~57.0.4
+expo-local-authentication: ~57.0.3
+```
+
+---
+
+### 5. Automated Verification Results
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (10 suites, 44 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web)
+```
+
+---
+
+### 6. Next Phase
+**Phase 3 — MVP-02 Pet Management**  
+*Scope:* Pet registration, pet health passport, vaccination timeline, and offline MMKV caching.
+

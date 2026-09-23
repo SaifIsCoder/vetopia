@@ -8,9 +8,9 @@ This matrix maps every functional requirement (from `01-product/SRS.md`) to its 
 
 | Requirement ID | Screen ID & Route | API Endpoint | Database Table(s) | Automated Test Case |
 | :--- | :--- | :--- | :--- | :--- |
-| **`FR-AUTH-001`** (Registration) | `SCR-AUTH-003`<br>`app/(auth)/register.tsx` | `POST /api/v1/auth/register` | `auth.users`<br>`public.profiles`<br>`public.user_roles` | `test_auth_register_success`<br>`test_auth_duplicate_email` |
-| **`FR-AUTH-002`** (Login & Biometrics)| `SCR-AUTH-002`<br>`app/(auth)/login.tsx` | `POST /api/v1/auth/login` | `auth.users` | `test_auth_login_valid`<br>`test_auth_rate_limiting` |
-| **`FR-AUTH-003`** (Session Refresh) | Background Interceptor | `POST /api/v1/auth/refresh` | `auth.refresh_tokens` | `test_token_rotation_seamless` |
+| **`FR-AUTH-001`** (Registration) | `SCR-AUTH-003`<br>`app/(auth)/register.tsx`<br>`app/(auth)/onboarding.tsx` | Supabase `auth.signUp`<br>`public.profiles.upsert`<br>`public.user_roles.insert` | `auth.users`<br>`public.profiles`<br>`public.user_roles`<br>`public.vet_profiles` | `tests/unit/auth-service.test.ts`<br>`tests/unit/auth-store.test.ts`<br>`tests/components/AuthScreens.test.tsx` |
+| **`FR-AUTH-002`** (Login & Biometrics)| `SCR-AUTH-002`<br>`app/(auth)/login.tsx`<br>`app/(auth)/welcome.tsx` | Supabase `auth.signInWithPassword`<br>`expo-local-authentication` | `auth.users`<br>`public.profiles`<br>`public.user_roles` | `tests/unit/auth-service.test.ts`<br>`tests/unit/biometrics.test.ts`<br>`tests/components/AuthScreens.test.tsx` |
+| **`FR-AUTH-003`** (Session Refresh) | Background Interceptor<br>`src/lib/api/client.ts` | Supabase `auth.refreshSession`<br>`expo-secure-store` | `auth.users` | `tests/unit/api-client-auth.test.ts`<br>`tests/unit/auth-store.test.ts` |
 | **`FR-PET-001`** (Register Pet) | `SCR-AUTH-004` / `SCR-TAB-005`<br>`app/registration/pet.tsx` | `POST /api/v1/pets` | `public.pets` | `test_pet_creation_success`<br>`test_pet_missing_fields` |
 | **`FR-PET-002`** (Health Passport) | `SCR-TAB-005` (Pet Detail)<br>`app/pets/[id].tsx` | `GET /api/v1/pets/:id` | `public.pets`<br>`public.prescriptions` | `test_pet_passport_offline_cache` |
 | **`FR-VET-001`** (Doctor Directory) | `SCR-TAB-002`<br>`app/(tabs)/vets.tsx` | `GET /api/v1/vets` | `public.vet_profiles` | `test_vet_filter_specialty`<br>`test_vet_search_query` |

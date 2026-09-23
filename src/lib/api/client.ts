@@ -1,4 +1,6 @@
 import { env } from '../../config/env';
+import { supabase } from '../supabase/client';
+import { useAuthStore } from '../../store/authStore';
 import {
   ApiError,
   AuthError,
@@ -16,17 +18,32 @@ export class ApiClient {
   private baseUrl: string;
   private tokenProvider: TokenProvider | null = null;
   private defaultTimeoutMs: number;
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor(baseUrl: string = env.apiUrl, defaultTimeoutMs = 15000) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.defaultTimeoutMs = defaultTimeoutMs;
+
+    // Default token provider reads from active Supabase session
+    this.tokenProvider = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token || null;
+      } catch {
+        return null;
+      }
+    };
   }
 
   public setTokenProvider(provider: TokenProvider): void {
     this.tokenProvider = provider;
   }
 
-  public async request<T>(endpoint: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
+  public async request<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+    isRetry = false,
+  ): Promise<ApiResponse<T>> {
     const {
       params,
       body,
@@ -64,7 +81,6 @@ export class ApiClient {
           headers.Authorization = `Bearer ${token}`;
         }
       } catch (err) {
-        // Token retrieval failure defaults to unauthenticated
         console.warn('Failed to retrieve authentication token', err);
       }
     }
@@ -84,8 +100,15 @@ export class ApiClient {
 
       const contentType = response.headers.get('content-type');
       const isJson = contentType && contentType.includes('application/json');
-
       const data = isJson ? await response.json() : null;
+
+      // Handle 401 Unauthorized with token refresh and single retry
+      if (response.status === 401 && requiresAuth && !isRetry) {
+        const newToken = await this.refreshToken();
+        if (newToken) {
+          return this.request<T>(endpoint, options, true);
+        }
+      }
 
       if (!response.ok) {
         this.handleErrorResponse(response.status, data);
@@ -96,6 +119,31 @@ export class ApiClient {
       clearTimeout(timeoutId);
       throw normalizeError(error);
     }
+  }
+
+  private async refreshToken(): Promise<string | null> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const { data, error } = await supabase.auth.refreshSession();
+        if (error || !data.session) {
+          useAuthStore.getState().clearSession();
+          return null;
+        }
+        useAuthStore.getState().setSession(data.session);
+        return data.session.access_token;
+      } catch {
+        useAuthStore.getState().clearSession();
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   private handleErrorResponse(status: number, data: any): never {
