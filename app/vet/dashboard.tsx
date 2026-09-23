@@ -49,7 +49,9 @@ export default function VetDashboardScreen() {
                   Verification Review in Progress
                 </Text>
                 <Text variant="caption" color={colors.inkSoft}>
-                  Your veterinarian account has been registered with status unverified. An authorized administrator must approve your medical license before consultations are activated.
+                  Your veterinarian account has been registered with status unverified. An
+                  authorized administrator must approve your medical license before consultations
+                  are activated.
                 </Text>
               </View>
             </View>

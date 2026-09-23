@@ -1,6 +1,16 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { FileText, Bot, Settings, LogOut } from 'lucide-react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import {
+  FileText,
+  Bot,
+  Settings,
+  LogOut,
+  Plus,
+  ChevronRight,
+  PawPrint,
+  AlertCircle,
+} from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
 import { Text } from '../../src/components/ui/Text';
@@ -13,9 +23,13 @@ import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
 import { useAuthStore } from '../../src/store/authStore';
 import { authService } from '../../src/lib/auth/authService';
+import { usePets } from '../../src/hooks/usePets';
+import { Pet } from '../../src/types/pet';
 
 export default function CareScreen() {
+  const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
+  const { data: pets, isLoading: petsLoading, error: petsError, refetch: refetchPets } = usePets();
 
   const handleSignOut = async () => {
     await authService.signOut();
@@ -58,6 +72,112 @@ export default function CareScreen() {
           />
         ) : null}
       </Card>
+
+      {/* My Pets Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Heading level={3}>My Pets</Heading>
+          <TouchableOpacity
+            style={styles.addPetHeaderBtn}
+            onPress={() => router.push('/pets/add')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add new pet"
+          >
+            <Plus size={16} color={colors.ink} />
+            <Text variant="bodySm" color={colors.ink} style={styles.addPetBtnText}>
+              Add Pet
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {petsLoading ? (
+          <Card style={styles.loadingCard}>
+            <ActivityIndicator size="small" color={colors.primaryDark} />
+            <Text variant="bodySm" color={colors.muted} style={{ marginTop: spacing.sm }}>
+              Loading household pets...
+            </Text>
+          </Card>
+        ) : petsError ? (
+          <Card style={styles.errorCard}>
+            <AlertCircle
+              size={20}
+              color={colors.destructive}
+              style={{ marginBottom: spacing.xs }}
+            />
+            <Text variant="bodySm" color={colors.destructive} style={{ textAlign: 'center' }}>
+              Failed to load pets.
+            </Text>
+            <Button
+              title="Retry"
+              onPress={() => refetchPets()}
+              variant="outline"
+              size="sm"
+              style={{ marginTop: spacing.sm }}
+            />
+          </Card>
+        ) : !pets || pets.length === 0 ? (
+          <Card style={styles.emptyPetsCard}>
+            <View style={styles.emptyIconCircle}>
+              <PawPrint size={28} color={colors.primaryDark} />
+            </View>
+            <Heading level={4} style={styles.emptyPetsTitle}>
+              No Pets Registered Yet
+            </Heading>
+            <Text variant="bodySm" color={colors.muted} style={styles.emptyPetsDesc}>
+              Add your dog, cat, or companion to activate digital health passports and vaccination
+              tracking.
+            </Text>
+            <Button
+              title="Register Your First Pet"
+              onPress={() => router.push('/pets/add')}
+              size="sm"
+              leftIcon={<Plus size={16} color={colors.ink} />}
+              style={styles.emptyAddBtn}
+            />
+          </Card>
+        ) : (
+          <View style={styles.petsList}>
+            {pets.map((pet: Pet) => (
+              <TouchableOpacity
+                key={pet.id}
+                onPress={() => router.push({ pathname: '/pets/[id]', params: { id: pet.id } })}
+                activeOpacity={0.8}
+                style={styles.petCardWrapper}
+              >
+                <Card style={styles.petCard}>
+                  <View style={styles.petCardRow}>
+                    <Avatar name={pet.name} source={pet.photo_url} size={48} />
+                    <View style={styles.petCardInfo}>
+                      <Heading level={4}>{pet.name}</Heading>
+                      <Text variant="caption" color={colors.inkSoft}>
+                        {pet.species} {pet.breed ? `• ${pet.breed}` : ''}
+                      </Text>
+                      <View style={styles.petTagsRow}>
+                        {pet.age ? (
+                          <View style={styles.petTag}>
+                            <Text variant="caption" color={colors.inkSoft}>
+                              {pet.age}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {pet.weight_kg ? (
+                          <View style={styles.petTag}>
+                            <Text variant="caption" color={colors.inkSoft}>
+                              {pet.weight_kg} kg
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                    <ChevronRight size={20} color={colors.muted} />
+                  </View>
+                </Card>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
 
       {/* Care Quick Links */}
       <View style={styles.section}>
@@ -116,29 +236,113 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   profileCard: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: spacing.md,
   },
   profileInfo: {
     flex: 1,
     marginLeft: spacing.md,
   },
   signOutBtn: {
-    marginTop: spacing.md,
-    borderColor: colors.destructive,
-    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
   },
   section: {
     marginBottom: spacing.xl,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   sectionTitle: {
     marginBottom: spacing.md,
   },
-  menuCard: {
+  addPetHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  addPetBtnText: {
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  loadingCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  errorCard: {
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  emptyPetsCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+  },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  emptyPetsTitle: {
+    marginBottom: spacing.xs,
+  },
+  emptyPetsDesc: {
+    textAlign: 'center',
     marginBottom: spacing.md,
+    lineHeight: 18,
+  },
+  emptyAddBtn: {
+    marginTop: spacing.xs,
+  },
+  petsList: {
+    gap: spacing.sm,
+  },
+  petCardWrapper: {
+    marginBottom: spacing.xs,
+  },
+  petCard: {
+    padding: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radii.md,
+  },
+  petCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  petCardInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  petTagsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: 4,
+  },
+  petTag: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  menuCard: {
+    marginBottom: spacing.sm,
   },
   menuRow: {
     flexDirection: 'row',

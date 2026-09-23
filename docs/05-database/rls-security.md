@@ -43,28 +43,32 @@ CREATE POLICY "profiles_update_own"
 ```sql
 ALTER TABLE public.pets ENABLE ROW LEVEL SECURITY;
 
--- Owners can view their own pets; Vets can view pets they have an active appointment with
-CREATE POLICY "pets_select_authorized" 
-  ON public.pets FOR SELECT USING (
+-- Revoke anon select to prevent unauthenticated data leakage
+REVOKE SELECT ON public.pets FROM anon;
+
+-- Owners can view their own pets; administrators can view all
+CREATE POLICY "owner reads own pets" 
+  ON public.pets FOR SELECT TO authenticated
+  USING (
     owner_id = auth.uid() OR 
-    EXISTS (
-      SELECT 1 FROM public.appointments a 
-      JOIN public.vet_profiles v ON v.id = a.vet_id 
-      WHERE a.pet_id = public.pets.id AND v.user_id = auth.uid()
-    ) OR
-    public.has_role(auth.uid(), 'admin')
+    public.has_role(auth.uid(), 'admin'::public.app_role)
   );
 
--- Only pet parents can register new pets under their own ID
-CREATE POLICY "pets_insert_owner" 
-  ON public.pets FOR INSERT WITH CHECK (owner_id = auth.uid());
+-- Only authenticated pet parents can register new pets under their own ID
+CREATE POLICY "owner inserts own pets" 
+  ON public.pets FOR INSERT TO authenticated
+  WITH CHECK (owner_id = auth.uid());
 
--- Only pet owner can modify or delete pet record
-CREATE POLICY "pets_update_owner" 
-  ON public.pets FOR UPDATE USING (owner_id = auth.uid()) WITH CHECK (owner_id = auth.uid());
+-- Only pet owner can modify their pet record
+CREATE POLICY "owner updates own pets" 
+  ON public.pets FOR UPDATE TO authenticated
+  USING (owner_id = auth.uid()) 
+  WITH CHECK (owner_id = auth.uid());
 
-CREATE POLICY "pets_delete_owner" 
-  ON public.pets FOR DELETE USING (owner_id = auth.uid());
+-- Only pet owner can delete their pet record
+CREATE POLICY "owner deletes own pets" 
+  ON public.pets FOR DELETE TO authenticated
+  USING (owner_id = auth.uid());
 ```
 
 ### 2.3 Veterinarian Profiles & Hours (`public.vet_profiles`, `public.vet_availability`)

@@ -39,9 +39,9 @@ describe('Veterinarian Authorization Security Verification', () => {
       });
 
       // Attempt self-approval via approveVet
-      await expect(
-        authService.approveVet('my-own-vet-profile-id', true),
-      ).rejects.toThrow(ForbiddenError);
+      await expect(authService.approveVet('my-own-vet-profile-id', true)).rejects.toThrow(
+        ForbiddenError,
+      );
 
       expect(supabase.rpc).toHaveBeenCalledWith('approve_vet', {
         target_vet_id: 'my-own-vet-profile-id',
@@ -57,7 +57,8 @@ describe('Veterinarian Authorization Security Verification', () => {
         eq: jest.fn().mockResolvedValue({
           data: null,
           error: {
-            message: 'Unauthorized: Only administrators can modify veterinarian verification status.',
+            message:
+              'Unauthorized: Only administrators can modify veterinarian verification status.',
             code: 'P0001',
           },
         }),
@@ -77,7 +78,9 @@ describe('Veterinarian Authorization Security Verification', () => {
         .eq('user_id', 'applicant-uid-123');
 
       expect(error).toBeDefined();
-      expect(error?.message).toContain('Only administrators can modify veterinarian verification status');
+      expect(error?.message).toContain(
+        'Only administrators can modify veterinarian verification status',
+      );
       expect(data).toBeNull();
     });
 
@@ -122,9 +125,9 @@ describe('Veterinarian Authorization Security Verification', () => {
       });
 
       // Non-admin attempting to approve another doctor
-      await expect(
-        authService.approveVet('target-candidate-vet-id', true),
-      ).rejects.toThrow(ForbiddenError);
+      await expect(authService.approveVet('target-candidate-vet-id', true)).rejects.toThrow(
+        ForbiddenError,
+      );
 
       expect(supabase.rpc).toHaveBeenCalledWith('approve_vet', {
         target_vet_id: 'target-candidate-vet-id',

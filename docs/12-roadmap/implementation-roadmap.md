@@ -171,6 +171,55 @@ Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web)
 ---
 
 ### 6. Next Phase
-**Phase 3 — MVP-02 Pet Management**  
-*Scope:* Pet registration, pet health passport, vaccination timeline, and offline MMKV caching.
+Phase 2 completed.
+
+---
+
+## Phase 3 — MVP-02 Pet Management
+
+**Status:** `COMPLETED`  
+**Execution Date:** 2026-09-23  
+**Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · Supabase PostgreSQL RLS
+
+### 1. Objective
+Deliver the complete, production-ready **MVP-02 Pet Management** module on top of the Phase 1 mobile foundation and Phase 2 authentication system, providing pet parents with complete CRUD capabilities over their household pets while enforcing strict database-level Row Level Security (RLS) isolation.
+
+---
+
+### 2. Implemented Scope
+* **Database & RLS Hardening (`supabase/migrations/20260923190000_pet_management_security.sql`):**
+  * Revoked unauthenticated `SELECT` on `public.pets` from `anon`.
+  * Replaced permissive `"pets are publicly viewable"` policy with `"owner reads own pets"` enforcing `USING (owner_id = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role))`.
+  * Verified ownership constraints on INSERT, UPDATE, and DELETE policies.
+  * Added `dob text` column supporting birth dates alongside age.
+* **Domain Models & Services (`src/types/pet.ts`, `src/lib/pets/petService.ts`):**
+  * `Pet`, `CreatePetDTO`, `UpdatePetDTO`, species options (`Dog`, `Cat`, `Bird`, `Rabbit`, `Other`), sex options.
+  * `PetService`: CRUD operations (`getPets`, `getPetById`, `createPet`, `updatePet`, `deletePet`) and input validation (`validatePetInput`).
+  * `usePets`, `usePet`, `useCreatePet`, `useUpdatePet`, `useDeletePet`: TanStack Query hooks with automatic cache invalidation on mutations.
+* **UI Screens & Care Hub (`app/pets/`, `app/(tabs)/care.tsx`):**
+  * `app/pets/add.tsx` (`SCR-TAB-005`): Add Pet screen with species/sex chips, biometrics inputs, validation, and error states.
+  * `app/pets/edit.tsx`: Edit Pet screen with pre-filled state, validation, and update mutation.
+  * `app/pets/[id].tsx`: Pet Details & Health Passport screen with hero card, biometrics grid, clinical notes, edit link, and delete confirmation modal.
+  * `app/(tabs)/care.tsx`: Integrated "My Pets" Section with loading indicator, empty state CTA, and list of registered pet cards navigating to pet details.
+* **Automated Quality Gates:**
+  * `tests/unit/pet-service.test.ts`: Unit tests for validation, CRUD operations, authentication requirements, and RLS ownership isolation.
+  * `tests/components/PetScreens.test.tsx`: Component tests for AddPetScreen, PetPassportScreen, and CareScreen My Pets section.
+
+---
+
+### 3. Automated Verification Results
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (13 suites, 72 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web)
+```
+
+---
+
+### 4. Next Phase
+**Phase 4 — MVP-03 Veterinarian Discovery**  
+*Scope:* Certified doctor directory, search by name/clinic, filtering by specialty, language, and country, doctor credentials and weekly availability calendar.
+
 

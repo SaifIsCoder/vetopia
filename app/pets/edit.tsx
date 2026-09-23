@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
   PawPrint,
@@ -20,22 +20,28 @@ import { Card } from '../../src/components/ui/Card';
 import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
-import { useCreatePet } from '../../src/hooks/usePets';
-import { SPECIES_OPTIONS, SEX_OPTIONS, PetSpecies, PetSex } from '../../src/types/pet';
+import { usePet, useUpdatePet } from '../../src/hooks/usePets';
+import { SPECIES_OPTIONS, SEX_OPTIONS, Pet, PetSpecies, PetSex } from '../../src/types/pet';
 
-export default function AddPetScreen() {
+interface PetEditFormProps {
+  pet: Pet;
+}
+
+function PetEditForm({ pet }: PetEditFormProps) {
   const router = useRouter();
-  const createPetMutation = useCreatePet();
+  const updatePetMutation = useUpdatePet();
 
-  const [name, setName] = useState('');
-  const [species, setSpecies] = useState<PetSpecies>('Dog');
-  const [breed, setBreed] = useState('');
-  const [sex, setSex] = useState<PetSex>('unknown');
-  const [age, setAge] = useState('');
-  const [weightKg, setWeightKg] = useState('');
-  const [color, setColor] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
-  const [bio, setBio] = useState('');
+  const [name, setName] = useState(pet.name || '');
+  const [species, setSpecies] = useState<PetSpecies>((pet.species as PetSpecies) || 'Dog');
+  const [breed, setBreed] = useState(pet.breed || '');
+  const [sex, setSex] = useState<PetSex>((pet.sex as PetSex) || 'unknown');
+  const [age, setAge] = useState(pet.age || pet.dob || '');
+  const [weightKg, setWeightKg] = useState(
+    pet.weight_kg !== null && pet.weight_kg !== undefined ? String(pet.weight_kg) : '',
+  );
+  const [color, setColor] = useState(pet.color || '');
+  const [photoUrl, setPhotoUrl] = useState(pet.photo_url || '');
+  const [bio, setBio] = useState(pet.bio || '');
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -61,26 +67,29 @@ export default function AddPetScreen() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSave = async () => {
+  const handleUpdate = async () => {
     setErrorMessage(null);
     if (!validate()) return;
 
     try {
-      await createPetMutation.mutateAsync({
-        name: name.trim(),
-        species,
-        breed: breed.trim() || null,
-        sex,
-        age: age.trim() || null,
-        weight_kg: weightKg.trim() ? parseFloat(weightKg) : null,
-        color: color.trim() || null,
-        photo_url: photoUrl.trim() || null,
-        bio: bio.trim() || null,
+      await updatePetMutation.mutateAsync({
+        petId: pet.id,
+        dto: {
+          name: name.trim(),
+          species,
+          breed: breed.trim() || null,
+          sex,
+          age: age.trim() || null,
+          weight_kg: weightKg.trim() ? parseFloat(weightKg) : null,
+          color: color.trim() || null,
+          photo_url: photoUrl.trim() || null,
+          bio: bio.trim() || null,
+        },
       });
 
       router.back();
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to register pet. Please try again.');
+      setErrorMessage(err?.message || 'Failed to update pet details. Please try again.');
     }
   };
 
@@ -100,7 +109,7 @@ export default function AddPetScreen() {
           <Text variant="caption" color={colors.inkSoft} style={styles.kicker}>
             PET PASSPORT
           </Text>
-          <Heading level={2}>Register New Pet</Heading>
+          <Heading level={2}>Edit {pet.name}</Heading>
         </View>
       </View>
 
@@ -253,10 +262,10 @@ export default function AddPetScreen() {
       {/* Action Buttons */}
       <View style={styles.actions}>
         <Button
-          title="Register Pet"
-          onPress={handleSave}
-          loading={createPetMutation.isPending}
-          disabled={createPetMutation.isPending}
+          title="Save Changes"
+          onPress={handleUpdate}
+          loading={updatePetMutation.isPending}
+          disabled={updatePetMutation.isPending}
           size="lg"
           style={styles.saveButton}
         />
@@ -265,16 +274,75 @@ export default function AddPetScreen() {
           onPress={() => router.back()}
           variant="outline"
           size="md"
-          disabled={createPetMutation.isPending}
+          disabled={updatePetMutation.isPending}
         />
       </View>
     </Screen>
   );
 }
 
+export default function EditPetScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { data: pet, isLoading, error: fetchError } = usePet(id || '');
+
+  if (isLoading) {
+    return (
+      <Screen style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primaryDark} />
+        <Text variant="bodyMd" color={colors.muted} style={styles.loadingText}>
+          Loading pet information...
+        </Text>
+      </Screen>
+    );
+  }
+
+  if (fetchError || !pet) {
+    return (
+      <Screen style={styles.centerContainer}>
+        <AlertCircle size={40} color={colors.destructive} />
+        <Heading level={3} style={styles.errorTitle}>
+          Unable to Load Pet
+        </Heading>
+        <Text variant="bodySm" color={colors.muted} style={styles.errorSubtitle}>
+          {fetchError?.message || 'Pet record not found or you do not have permission to view it.'}
+        </Text>
+        <Button
+          title="Go Back"
+          onPress={() => router.back()}
+          variant="outline"
+          style={styles.errorBackBtn}
+        />
+      </Screen>
+    );
+  }
+
+  return <PetEditForm pet={pet} />;
+}
+
 const styles = StyleSheet.create({
   container: {
     paddingVertical: spacing.lg,
+  },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  loadingText: {
+    marginTop: spacing.md,
+  },
+  errorTitle: {
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  errorSubtitle: {
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  errorBackBtn: {
+    minWidth: 140,
   },
   header: {
     flexDirection: 'row',
