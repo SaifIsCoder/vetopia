@@ -13,6 +13,7 @@ export interface UserProfile {
   roles: UserRole[];
   onboarded: boolean;
   isVet: boolean;
+  isVetVerified?: boolean;
 }
 
 export interface AuthState {

@@ -72,18 +72,68 @@ CREATE POLICY "pets_delete_owner"
 ALTER TABLE public.vet_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vet_availability ENABLE ROW LEVEL SECURITY;
 
--- Public can search and view all doctor profiles and bookable hours
-CREATE POLICY "vet_profiles_select_all" ON public.vet_profiles FOR SELECT USING (true);
+-- 1. Public can search and view all doctor profiles and bookable hours
+CREATE POLICY "vets are public" ON public.vet_profiles FOR SELECT USING (true);
 CREATE POLICY "vet_availability_select_all" ON public.vet_availability FOR SELECT USING (true);
 
--- Doctors can only update their own profile and availability windows
-CREATE POLICY "vet_profiles_update_own" 
-  ON public.vet_profiles FOR UPDATE USING (auth.uid() = user_id);
+-- 2. Vet applicants can only register with verified = false (unless admin)
+CREATE POLICY "vet creates own profile" ON public.vet_profiles
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (verified IS FALSE OR public.has_role(auth.uid(), 'admin'::public.app_role))
+  );
 
+-- 3. Doctors can update their own clinical and practice details
+CREATE POLICY "vet updates own profile" 
+  ON public.vet_profiles FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+
+-- 4. Administrators can update any doctor profile (e.g. approve verification)
+CREATE POLICY "admins update vet profiles"
+  ON public.vet_profiles FOR UPDATE TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+
+-- 5. Availability window management
 CREATE POLICY "vet_availability_manage_own" 
   ON public.vet_availability FOR ALL USING (
     EXISTS (SELECT 1 FROM public.vet_profiles v WHERE v.id = vet_id AND v.user_id = auth.uid())
   );
+
+-- 6. Trigger Guard: prevents non-admins from self-verifying or modifying verified status
+CREATE OR REPLACE FUNCTION public.enforce_vet_verification_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF TG_OP = 'INSERT' AND NEW.verified IS TRUE AND NOT (
+    public.has_role(auth.uid(), 'admin'::public.app_role) OR current_user = 'service_role'
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: Veterinarian profiles cannot be self-verified upon registration.';
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND NEW.verified IS DISTINCT FROM OLD.verified AND NOT (
+    public.has_role(auth.uid(), 'admin'::public.app_role) OR current_user = 'service_role'
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: Only administrators can modify veterinarian verification status.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- 7. Secure Administrator Approval RPC
+CREATE OR REPLACE FUNCTION public.approve_vet(target_vet_id uuid, approve_status boolean default true)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  updated_row public.vet_profiles%rowtype;
+BEGIN
+  IF NOT (public.has_role(auth.uid(), 'admin'::public.app_role) OR current_user = 'service_role') THEN
+    RAISE EXCEPTION 'Unauthorized: Only administrators can approve or verify veterinarians.';
+  END IF;
+
+  UPDATE public.vet_profiles SET verified = approve_status WHERE id = target_vet_id RETURNING * INTO updated_row;
+  RETURN to_jsonb(updated_row);
+END;
+$$;
 ```
 
 ### 2.4 Appointments (`public.appointments`)

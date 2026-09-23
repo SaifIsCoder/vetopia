@@ -6,7 +6,7 @@ import { radii } from '../../theme/radii';
 import { spacing } from '../../theme/spacing';
 import { Text } from './Text';
 
-export type BadgeVariant = 'verified' | 'scheduled' | 'completed' | 'cancelled';
+export type BadgeVariant = 'verified' | 'scheduled' | 'completed' | 'cancelled' | 'pending';
 
 export interface BadgeProps {
   variant: BadgeVariant;
@@ -19,6 +19,7 @@ const defaultLabels: Record<BadgeVariant, string> = {
   scheduled: 'Scheduled',
   completed: 'Completed',
   cancelled: 'Cancelled',
+  pending: 'Pending Verification',
 };
 
 export const Badge: React.FC<BadgeProps> = ({ variant, label = defaultLabels[variant], style }) => {
@@ -65,6 +66,11 @@ const variantStyles: Record<BadgeVariant, ViewStyle> = {
   cancelled: {
     backgroundColor: colors.destructive,
   },
+  pending: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
 };
 
 const textColors: Record<BadgeVariant, string> = {
@@ -72,4 +78,5 @@ const textColors: Record<BadgeVariant, string> = {
   scheduled: colors.inkSoft,
   completed: colors.cream,
   cancelled: colors.cream,
+  pending: '#92400E',
 };

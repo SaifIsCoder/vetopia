@@ -2,7 +2,14 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 import { useAuthStore, UserProfile, UserRole } from '../../store/authStore';
 import { queryClient } from '../query/client';
-import { ApiError, AuthError, NetworkError, ValidationError, normalizeError } from '../api/errors';
+import {
+  ApiError,
+  AuthError,
+  ForbiddenError,
+  NetworkError,
+  ValidationError,
+  normalizeError,
+} from '../api/errors';
 
 export interface RegisterParams {
   email: string;
@@ -104,7 +111,7 @@ class AuthService {
         console.warn('[AuthService] Role assignment warning:', e);
       }
 
-      // If registered as vet, create vet_profiles record
+      // If registered as vet, create vet_profiles record with verified: false
       if (role === 'vet') {
         try {
           await supabase.from('vet_profiles').insert({
@@ -112,6 +119,7 @@ class AuthService {
             name: fullName.trim(),
             specialty: specialty || 'General Veterinary Medicine',
             price_usd: priceUsd || 29,
+            verified: false,
           });
         } catch (e) {
           console.warn('[AuthService] Vet profile creation warning:', e);
@@ -192,6 +200,7 @@ class AuthService {
       const prof = profileRes.data;
       const roleRows = (rolesRes.data ?? []) as { role: UserRole }[];
       const isVet = !!vetRes.data || roleRows.some((r) => r.role === 'vet');
+      const isVetVerified = vetRes.data?.verified === true;
 
       let roles: UserRole[] = roleRows.map((r) => r.role);
       if (roles.length === 0) {
@@ -207,6 +216,7 @@ class AuthService {
         roles,
         onboarded: prof?.onboarded ?? false,
         isVet,
+        isVetVerified,
       };
     } catch (error) {
       console.warn('[AuthService] Error loading user profile:', error);
@@ -217,7 +227,31 @@ class AuthService {
         roles: ['pet_parent'],
         onboarded: false,
         isVet: false,
+        isVetVerified: false,
       };
+    }
+  }
+
+  /**
+   * Approves or rejects a veterinarian profile.
+   * Can only be performed by an authorized administrator (enforced server-side via RPC & RLS).
+   */
+  public async approveVet(vetProfileId: string, approved: boolean = true): Promise<boolean> {
+    try {
+      const { data, error } = await supabase.rpc('approve_vet', {
+        target_vet_id: vetProfileId,
+        approve_status: approved,
+      });
+
+      if (error) {
+        throw new ForbiddenError(
+          error.message || 'Unauthorized: Only administrators can approve veterinarians.',
+        );
+      }
+
+      return !!data;
+    } catch (err) {
+      throw this.sanitizeError(err);
     }
   }
 

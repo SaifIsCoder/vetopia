@@ -59,3 +59,10 @@ Calls signals (`offer`, `answer`, `ice`, `hangup`) inside `public.call_signals` 
 
 ### Rule 4: Prescription Immutability
 Once a veterinarian submits a prescription, it is immutable (`UPDATE` operations are forbidden). If a doctor makes an error, they must issue a superseding prescription with an audit reference to the previous prescription ID.
+
+### Rule 5: Veterinarian Verification & Approval Guard
+1. **Unverified Default**: A veterinarian applicant may self-register with role `vet`, but their initial `vet_profiles.verified` status is strictly enforced as `false`.
+2. **RLS Insert Restriction**: Database Row Level Security on `public.vet_profiles` (`"vet creates own profile"`) rejects any `INSERT` with `verified = true` unless the caller has the `admin` role (`public.has_role(auth.uid(), 'admin')`).
+3. **Trigger Immutability**: A PostgreSQL `BEFORE INSERT OR UPDATE` trigger (`vet_verification_guard`) enforces that non-administrators cannot modify `verified`. Any client-side or API attempt to self-verify is rejected at the database engine level.
+4. **Authoritative Admin Approval**: Only authenticated administrators can verify a veterinarian, using either the administrative update RLS policy (`"admins update vet profiles"`) or the security definer RPC function `public.approve_vet(target_vet_id uuid, approve_status boolean)`. Normal users, unverified vets, and unauthorized callers are strictly denied.
+

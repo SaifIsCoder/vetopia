@@ -16,6 +16,7 @@ jest.mock('../../src/lib/supabase/client', () => {
         getSession: jest.fn(),
       },
       from: jest.fn(),
+      rpc: jest.fn(),
     },
   };
 });
@@ -135,6 +136,7 @@ describe('AuthService (Supabase Integration)', () => {
         name: 'Dr. John Doe',
         specialty: 'Dermatology',
         price_usd: 35,
+        verified: false,
       });
 
       expect(result.user?.id).toBe('v1');

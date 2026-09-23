@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Stethoscope, LogOut, User } from 'lucide-react-native';
+import { Stethoscope, LogOut, User, Clock } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
 import { Text } from '../../src/components/ui/Text';
@@ -21,6 +21,8 @@ export default function VetDashboardScreen() {
     await authService.signOut();
   };
 
+  const isVerified = user?.isVetVerified === true;
+
   return (
     <Screen style={styles.container}>
       <View style={styles.header}>
@@ -31,8 +33,28 @@ export default function VetDashboardScreen() {
             </Text>
             <Heading level={2}>{user?.fullName || 'Veterinarian'}</Heading>
           </View>
-          <Badge label="Verified Vet" variant="verified" />
+          {isVerified ? (
+            <Badge label="Verified Vet" variant="verified" />
+          ) : (
+            <Badge label="Pending Verification" variant="pending" />
+          )}
         </View>
+
+        {!isVerified && (
+          <Card style={styles.pendingCard}>
+            <View style={styles.pendingRow}>
+              <Clock size={18} color={colors.warning} style={styles.pendingIcon} />
+              <View style={styles.pendingText}>
+                <Text variant="caption" color={colors.ink} style={styles.pendingTitle}>
+                  Verification Review in Progress
+                </Text>
+                <Text variant="caption" color={colors.inkSoft}>
+                  Your veterinarian account has been registered with status unverified. An authorized administrator must approve your medical license before consultations are activated.
+                </Text>
+              </View>
+            </View>
+          </Card>
+        )}
 
         <Card style={styles.profileCard}>
           <View style={styles.profileRow}>
@@ -86,6 +108,30 @@ const styles = StyleSheet.create({
   },
   kicker: {
     letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  pendingCard: {
+    padding: spacing.md,
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    borderRadius: radii.md,
+    marginBottom: spacing.md,
+  },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  pendingIcon: {
+    marginRight: spacing.sm,
+    marginTop: 2,
+  },
+  pendingText: {
+    flex: 1,
+  },
+  pendingTitle: {
+    fontWeight: '700',
+    color: '#92400E',
     marginBottom: 2,
   },
   profileCard: {

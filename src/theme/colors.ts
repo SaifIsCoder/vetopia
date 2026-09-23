@@ -16,6 +16,7 @@ export const colors = {
   // Semantic
   destructive: '#DC2626', // Crimson - Emergency triage alerts, end-call, cancel
   success: '#16A34A', // Forest Green - Online status, completed consults
+  warning: '#D97706', // Amber - Pending verification, attention notices
   muted: '#6E7676', // Neutral secondary helper text
   white: '#FFFFFF', // Pure white card backgrounds
   black: '#000000',
