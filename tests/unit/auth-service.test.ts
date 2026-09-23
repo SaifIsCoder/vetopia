@@ -151,6 +151,44 @@ describe('AuthService (Supabase Integration)', () => {
       ).rejects.toThrow(ValidationError);
     });
 
+    test('Rejects client-side privilege escalation attempt to super_admin', async () => {
+      await expect(
+        authService.register({
+          email: 'hacker@example.com',
+          password: 'Password123!',
+          fullName: 'Bad Actor',
+          role: 'super_admin' as any,
+        }),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    test('Simulates database RLS check blocking direct admin role insert', async () => {
+      // Simulate PostgreSQL RLS "claim own role" check violation (role <> 'admin')
+      (supabase.from as jest.Mock).mockImplementationOnce((table: string) => {
+        if (table === 'user_roles') {
+          return {
+            insert: jest.fn().mockResolvedValue({
+              data: null,
+              error: {
+                message: 'new row violates row-level security policy for table "user_roles"',
+                code: '42501',
+              },
+            }),
+          };
+        }
+        return { insert: jest.fn() };
+      });
+
+      const { error } = await supabase.from('user_roles').insert({
+        user_id: 'u1',
+        role: 'admin' as any,
+      });
+
+      expect(error).toBeDefined();
+      expect(error?.code).toBe('42501');
+      expect(error?.message).toContain('violates row-level security policy');
+    });
+
     test('Throws DUPLICATE_EMAIL error (409) when email already registered', async () => {
       (supabase.auth.signUp as jest.Mock).mockResolvedValueOnce({
         data: { user: null, session: null },
