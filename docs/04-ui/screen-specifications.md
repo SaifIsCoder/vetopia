@@ -1,0 +1,263 @@
+# Screen Specifications — Vetopia Mobile MVP
+
+This document specifies every screen included in the **Vetopia Mobile MVP**. All non-MVP screens (community feeds, adoption marketplaces, farm registries) are excluded.
+
+---
+
+## 1. Authentication & Onboarding Module
+
+### Screen `SCR-AUTH-001`: Welcome / Splash Screen
+* **File Path:** `mobile/app/(auth)/welcome.tsx`
+* **Purpose:** Introduce the Vetopia value proposition ("Online Vet in Your Language", "24/7 AI Triage", "Digital Pet Passport") and offer entry into login or registration.
+* **Allowed Roles:** Unauthenticated
+* **Entry Points:** App cold launch when no active session exists.
+* **Exit Points:** `LoginScreen`, `RegisterScreen`.
+* **UI Structure:**
+  * Top: Brand logo (`The Pets Club / Vetopia`).
+  * Center: Auto-scrolling carousel with 3 hero illustrations and benefit statements.
+  * Bottom: "Get Started" (Primary Lime Button), "I already have an account" (Ghost Button), and "Sign in with Google" button.
+* **State:** Active carousel slide index (`useState(0)`).
+* **API Dependencies:** None.
+* **Permissions:** None.
+* **Accessibility:** Accessible carousel with page indicators announced by voiceover.
+* **Related Requirements:** `FR-AUTH-001`, `FR-AUTH-002`.
+
+---
+
+### Screen `SCR-AUTH-002`: Login Screen
+* **File Path:** `mobile/app/(auth)/login.tsx`
+* **Purpose:** Authenticate existing pet parents and veterinarians using email/password or local biometrics.
+* **Allowed Roles:** Unauthenticated
+* **Entry Points:** `WelcomeScreen`, deep link to protected route.
+* **Exit Points:** `HomeScreen` (on success), `ForgotPasswordScreen`, `RegisterScreen`.
+* **UI Structure:**
+  * Header: Back button, screen title "Welcome Back".
+  * Body: Email Input, Password Input (with secure entry toggle), "Forgot Password?" text link.
+  * Bottom: Primary "Sign In" Button, Biometric icon button (Face ID / Fingerprint).
+* **State:** `email`, `password`, `isSubmitting`, `biometricAvailable`.
+* **Validation:** Email format (`z.string().email()`), Password non-empty.
+* **API Dependencies:** `POST /api/v1/auth/login`.
+* **Loading State:** Button displays activity spinner, inputs disabled.
+* **Error State:** Red inline error banner for invalid credentials or locked account.
+* **Related Requirements:** `FR-AUTH-002`.
+
+---
+
+### Screen `SCR-AUTH-003`: Registration Screen
+* **File Path:** `mobile/app/(auth)/register.tsx`
+* **Purpose:** Create a new user account with initial role designation.
+* **Allowed Roles:** Unauthenticated
+* **Entry Points:** `WelcomeScreen`, `LoginScreen`.
+* **Exit Points:** `OnboardingScreen` (on success), `LoginScreen`.
+* **UI Structure:**
+  * Header: Back button, screen title "Join The Pets Club".
+  * Role Switcher: Segmented cards for "Pet Parent" (Book & consult) vs "Veterinarian" (Provide care).
+  * Form Fields: Full Name, Email, Password, Confirm Password.
+  * Vet-Specific Fields (if Vet selected): Primary Specialty dropdown, Consultation Price (USD).
+  * Terms & Privacy checkbox.
+  * Bottom: "Create Account" Primary Button.
+* **Validation:** Full Name min 2 chars, Email valid, Password min 6 chars with confirmation match.
+* **API Dependencies:** `POST /api/v1/auth/register`.
+* **Database Dependencies:** `auth.users`, `public.profiles`, `public.user_roles`, `public.vet_profiles`.
+* **Related Requirements:** `FR-AUTH-001`.
+
+---
+
+### Screen `SCR-AUTH-004`: Onboarding Wizard
+* **File Path:** `mobile/app/(auth)/onboarding.tsx`
+* **Purpose:** Guide newly registered users through initial profile photo upload and first pet registration.
+* **Allowed Roles:** `pet_parent`, `vet` with `profile.onboarded == false`.
+* **Entry Points:** Automatic redirect following successful registration.
+* **Exit Points:** `HomeScreen` (`app/(tabs)/index.tsx`).
+* **UI Structure:**
+  * Progress Bar: Step 1 (Profile & Avatar) -> Step 2 (Register First Pet) -> Complete.
+  * Step 1: Avatar image picker (Camera or Gallery), Username field (`^[a-z0-9_.]{3,24}$`), Location.
+  * Step 2: Pet Name, Species (Dog/Cat/Bird/Other), Breed, Age, Weight, Photo.
+  * Action: "Skip for now" link vs "Complete Setup" button.
+* **API Dependencies:** `POST /api/v1/users/onboarding`, `POST /api/v1/pets`.
+* **Permissions:** Camera and photo library permissions (`expo-image-picker`).
+* **Related Requirements:** `FR-AUTH-001`, `FR-PET-001`.
+
+---
+
+## 2. Core Bottom Tab Screens
+
+### Screen `SCR-TAB-001`: Home Dashboard Screen
+* **File Path:** `mobile/app/(tabs)/index.tsx`
+* **Purpose:** Daily hub for pet parents and doctors. Offers instant emergency triage, upcoming appointments, and quick booking access.
+* **Allowed Roles:** `pet_parent`, `vet`.
+* **Entry Points:** Bottom Tab Bar (Tab 1), default post-login route.
+* **Exit Points:** `ConsultRoomScreen`, `VetDirectoryScreen`, `AIChatbotScreen`, `PetPassportScreen`.
+* **UI Structure:**
+  * Top Bar: Greeting ("Good morning, Sarah"), Active consultation beacon (if consult within 15m), notification bell.
+  * Emergency Triage Banner: High-contrast red/lime banner: "24/7 AI Pet Triage — Instant Symptoms Assessment".
+  * "My Pets" Quick Strip: Horizontal avatar row of registered pets with health status dots. Plus button to add pet.
+  * Upcoming Consultations Card: Next scheduled appointment countdown with direct "Join Room" button.
+  * Quick-Book Veterinarians Carousel: Doctors currently online and accepting consults in < 15 mins.
+* **State:** Server state via TanStack Query (`dashboardQuery`).
+* **Loading State:** Skeleton shimmer cards for upcoming appointments and doctor carousel.
+* **Empty State:** If no pets registered, displays "Add your pet to get customized health reminders".
+* **API Dependencies:** `GET /api/v1/home/dashboard`.
+* **Related Requirements:** `FR-BOOK-001`, `FR-VET-001`, `FR-AI-001`.
+
+---
+
+### Screen `SCR-TAB-002`: Vet Directory Screen
+* **File Path:** `mobile/app/(tabs)/vets.tsx`
+* **Purpose:** Search, filter, and discover certified veterinarians across 11 languages and 12 specialties.
+* **Allowed Roles:** All users.
+* **Entry Points:** Bottom Tab Bar (Tab 2), "Browse All Vets" buttons.
+* **Exit Points:** `VetProfileScreen`, `BookingModalScreen`.
+* **UI Structure:**
+  * Search Header: Sticky search input with debounced text matching.
+  * Horizontal Filter Chips: Specialty pills (All, General, Dermatology, Surgery, Cardiology, etc.), Language dropdown, Country flag filter.
+  * Doctor FlashList:
+    * Card: Avatar, verified shield badge, nationality flag, full name, specialty subtitle.
+    * Metadata: Star rating, review count, languages spoken, next available slot badge.
+    * Price & Action: Consultation price (USD/localized), "Book Consult" button.
+* **State:** `searchQuery`, `selectedSpecialty`, `selectedLanguage`, `maxPrice`.
+* **Empty State:** "No veterinarians match your filters. Try clearing some criteria." with Reset button.
+* **API Dependencies:** `GET /api/v1/vets`.
+* **Database Dependencies:** `public.vet_profiles`.
+* **Related Requirements:** `FR-VET-001`.
+
+---
+
+### Screen `SCR-TAB-003`: Appointments Hub Screen
+* **File Path:** `mobile/app/(tabs)/appointments.tsx`
+* **Purpose:** Manage active, upcoming, and past veterinary consultations.
+* **Allowed Roles:** `pet_parent`, `vet`.
+* **Entry Points:** Bottom Tab Bar (Tab 3), consultation push notification taps.
+* **Exit Points:** `ConsultRoomScreen`, `PrescriptionDetailScreen`, `BookingModalScreen`.
+* **UI Structure:**
+  * Segmented Control Header: "Upcoming" (with count badge) | "Past Consultations".
+  * Upcoming Appointments List:
+    * Card: Date & time chip, doctor avatar & name, pet name & species tag, format badge (Video/Audio/Chat).
+    * Action Row: "Join Room" (Primary Lime button, enabled 15m prior to call), "Cancel" text button.
+  * Past Consultations List:
+    * Card: Completed date, doctor name, status pill (`completed` or `cancelled`).
+    * Action Row: "View Prescription" button (if script issued), "Consultation Summary".
+* **Empty State (Upcoming):** "No upcoming consultations scheduled." with "Find a Vet" CTA button.
+* **API Dependencies:** `GET /api/v1/appointments`.
+* **Database Dependencies:** `public.appointments`, `public.vet_profiles`, `public.prescriptions`.
+* **Related Requirements:** `FR-BOOK-002`, `FR-TELE-001`.
+
+---
+
+### Screen `SCR-TAB-004`: Clinical Messages Inbox Screen
+* **File Path:** `mobile/app/(tabs)/messages.tsx`
+* **Purpose:** 1-to-1 asynchronous messaging inbox between pet parents and consulting veterinarians.
+* **Allowed Roles:** `pet_parent`, `vet`.
+* **Entry Points:** Bottom Tab Bar (Tab 4).
+* **Exit Points:** `MessageThreadScreen`.
+* **UI Structure:**
+  * Header: "Messages", unread messages badge.
+  * Inbox FlashList:
+    * Thread Item: Counterpart avatar (Doctor or Pet Parent), Counterpart name, last message preview snippet, timestamp, unread count pill.
+* **Empty State:** "No conversations yet. When you book a consult or reach out to a vet, your chats appear here."
+* **API Dependencies:** `GET /api/v1/conversations`.
+* **Database Dependencies:** `public.conversations`, `public.direct_messages`.
+* **Related Requirements:** `FR-MSG-001`.
+
+---
+
+### Screen `SCR-TAB-005`: Care Hub & Profile Screen
+* **File Path:** `mobile/app/(tabs)/care.tsx`
+* **Purpose:** Centralized repository for pet health passports, prescription history, AI assistant entry, and account settings.
+* **Allowed Roles:** `pet_parent`, `vet`.
+* **Entry Points:** Bottom Tab Bar (Tab 5).
+* **Exit Points:** `PetPassportScreen`, `AddPetScreen`, `PrescriptionDetailScreen`, `AIChatbotScreen`, `VetDashboardScreen`, `SettingsScreen`.
+* **UI Structure:**
+  * User Card: Avatar, user full name, email, role badge (`Pet Parent` or `Verified Vet`).
+  * "My Pets" Section:
+    * Pet Cards: Photo thumbnail, pet name, breed, age, weight. Plus card to "Register Another Pet".
+  * Quick Links List:
+    * "Digital Prescriptions Archive" (Shows count of active prescriptions).
+    * "24/7 AI Veterinary Assistant".
+    * "Vet Provider Dashboard" (Rendered conditionally if user has `vet` role).
+    * "Account Settings & Security" (Biometrics, language, notifications).
+    * "Log Out" button.
+* **API Dependencies:** `GET /api/v1/pets`, `GET /api/v1/users/me`.
+* **Database Dependencies:** `public.profiles`, `public.pets`, `public.user_roles`.
+* **Related Requirements:** `FR-PET-001`, `FR-PET-002`.
+
+---
+
+## 3. Telemedicine & Detail Modal Screens
+
+### Screen `SCR-TELE-001`: Telemedicine Consultation Room
+* **File Path:** `mobile/app/consult/[id].tsx`
+* **Purpose:** End-to-end WebRTC video/audio/chat consultation room with hardware media toggles.
+* **Allowed Roles:** Appointment participants only (`pet_parent_id` or `vet.user_id`).
+* **Entry Points:** "Join Room" CTA from Home, Appointments, or deep link.
+* **Exit Points:** Return to `AppointmentsScreen` upon call end.
+* **UI Structure:**
+  * Top Bar: Doctor name/pet name, call duration timer (`00:14:22`), encrypted lock badge.
+  * Main Viewport:
+    * Full-Screen: Remote video stream (Peer's camera).
+    * Floating PiP Window: Local video preview (drag-draggable across corners).
+    * Waiting Room Banner: "Waiting for other participant to connect..."
+  * Controls Dock (Floating Bottom Bar):
+    * Mic Toggle (Mute/Unmute).
+    * Camera Toggle (Video On/Off).
+    * Camera Flip (Front/Rear camera).
+    * Speakerphone Toggle (Earpiece/Speaker).
+    * In-Call Chat Overlay Trigger (Opens sliding text panel).
+    * End Call Button (Prominent Red Circular Button).
+  * Post-Call Drawer (For Vet only): "Complete Consult & Write Prescription".
+* **State:** `callState` (`waiting`, `connecting`, `connected`, `ended`), `micMuted`, `cameraOff`, `isFrontCamera`.
+* **Permissions:** Mandatory camera and microphone access (`expo-camera`, WebRTC audio tracks).
+* **Network Error State:** "Connection interrupted. Reconnecting..." with auto ICE restart.
+* **API / Realtime:** Supabase `call_signals` channel, `PUT /api/v1/appointments/:id/complete`.
+* **Related Requirements:** `FR-TELE-001`, `FR-TELE-002`, `FR-TELE-003`.
+
+---
+
+### Screen `SCR-BOOK-001`: Multi-Step Booking Modal
+* **File Path:** `mobile/app/booking/[vetId].tsx`
+* **Purpose:** Multi-step reservation wizard for scheduling a telemedicine appointment.
+* **Allowed Roles:** `pet_parent`.
+* **Entry Points:** "Book Consultation" CTA from doctor profile or directory.
+* **Exit Points:** Confirmed receipt screen, dismiss modal.
+* **UI Structure:**
+  * Step 1: Calendar date selector (14-day strip) + time slot grid.
+  * Step 2: Pet selection (Choose from registered pets) + consultation format picker (Video, Audio, Chat).
+  * Step 3: Clinical intake form (Describe symptoms, duration, current medications, urgency).
+  * Step 4: Price summary, cancellation policy disclosure, and "Confirm & Pay" button.
+* **API Dependencies:** `GET /api/v1/vets/:id/schedule`, `POST /api/v1/appointments`.
+* **Related Requirements:** `FR-BOOK-001`.
+
+---
+
+### Screen `SCR-PRES-001`: Prescription Detail Screen
+* **File Path:** `mobile/app/prescriptions/[id].tsx`
+* **Purpose:** Display structured digital prescription and legal medical instructions.
+* **Allowed Roles:** Authoring Vet, Pet Parent of prescribed pet.
+* **Entry Points:** Past appointment detail, Care Hub prescriptions list, push notification tap.
+* **UI Structure:**
+  * Header: Clinic header, prescribing doctor name, medical license number.
+  * Patient Info: Pet name, species, breed, age, owner name.
+  * Medication Table: Drug name, form (tablet/liquid), dosage, frequency, duration, instructions.
+  * Legal Disclaimer: Valid digital veterinary prescription disclaimer.
+  * Bottom Bar: "Download PDF" button, "Refill Inquiry" button.
+* **API Dependencies:** `GET /api/v1/prescriptions/:id`.
+* **Database Dependencies:** `public.prescriptions`, `public.prescription_items`.
+* **Related Requirements:** `FR-PRES-002`.
+
+---
+
+### Screen `SCR-AI-001`: 24/7 AI Triage Chatbot Screen
+* **File Path:** `mobile/app/ai/chat.tsx`
+* **Purpose:** Natural language symptom checker for routine questions and emergency detection.
+* **Allowed Roles:** All users.
+* **Entry Points:** Home emergency banner, Care Hub AI assistant button.
+* **UI Structure:**
+  * Disclaimer Banner: "AI Assistant provides educational triage, not a veterinary medical diagnosis."
+  * Messages List: Bubble conversation history with streamed markdown formatting.
+  * Quick Suggestions Chips: "Dog ate chocolate", "Cat vomiting yellow foam", "Puppy vaccine schedule".
+  * Emergency Alert Banner (Renders dynamically on red-flag detection):
+    * Warning: "CRITICAL: Symptoms indicate a possible veterinary emergency."
+    * Buttons: "Call Emergency Vet Now" (tel: dialer) and "Connect to Video Specialist".
+  * Bottom Composer: Text input and send button.
+* **API Dependencies:** `POST /api/v1/ai/triage-chat` (SSE Streaming).
+* **Related Requirements:** `FR-AI-001`.
