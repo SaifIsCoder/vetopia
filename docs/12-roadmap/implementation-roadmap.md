@@ -219,7 +219,61 @@ Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web)
 ---
 
 ### 4. Next Phase
-**Phase 4 — MVP-03 Veterinarian Discovery**  
-*Scope:* Certified doctor directory, search by name/clinic, filtering by specialty, language, and country, doctor credentials and weekly availability calendar.
+Phase 3 completed.
+
+---
+
+## Phase 4 — MVP-03 Veterinarian Discovery
+
+**Status:** `COMPLETED`  
+**Execution Date:** 2026-09-24  
+**Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · Supabase PostgreSQL RLS
+
+### 1. Objective
+Deliver the complete, production-ready **MVP-03 Veterinarian Discovery** module on top of the established Phase 1–3 mobile foundation, allowing pet parents to search and filter certified veterinarians across 12 specialties and 11 languages, view doctor credentials, and inspect 14-day bookable availability slots while strictly preserving the Phase 5 (MVP-04 Appointments) boundary.
+
+---
+
+### 2. Implemented Scope
+* **Domain Models & Constants (`src/types/vet.ts`):**
+  * `VetProfile`, `VetAvailability`, `TimeSlot`, `DaySchedule`, `VetFilterParams`.
+  * Authoritative constants: 12 specialties (`VET_SPECIALTIES`), 11 languages (`VET_LANGUAGES`), countries (`VET_COUNTRIES`), consultation price filters (`VET_PRICE_OPTIONS`).
+* **Service Layer & 14-Day Slot Generator (`src/lib/vets/vetService.ts`):**
+  * `VetService.getVets()`: Database queries against `public.vet_profiles` with text search (`q` matching name/specialty), specialty filter, language filter, country filter, max price filter, and accepting status.
+  * Empty query alternative behavior: returns top-rated doctors currently accepting consults.
+  * `VetService.getVetById()`: Fetches single verified doctor profile.
+  * `buildSlots()`: Pure function generating 14-day bookable consultation slots from `public.vet_availability` minus existing scheduled `public.appointments`, omitting past slots and slots within a 15-minute advance buffer.
+  * `VetService.getVetSchedule()`: Fetches availability windows and appointments to generate live slots.
+* **TanStack Query Hooks (`src/hooks/useVets.ts`):**
+  * `useVets()`: Server-state hook with 5-minute cache and query invalidation.
+  * `useVet()`: Doctor profile query hook.
+  * `useVetSchedule()`: 14-day live bookable slots query hook.
+* **Reusable UI Components (`src/components/vets/`):**
+  * `VetCard.tsx`: Doctor card with avatar, name, verified badge, specialty, nationality flag, rating & review count, languages, consultation fee, and accepting status indicator.
+  * `VetFilterSheet.tsx`: Bottom sheet filter modal covering specialty, language, country, max fee, and availability status with Reset and Apply actions.
+* **Authoritative Screens (`app/(tabs)/vets.tsx`, `app/booking/[vetId].tsx`):**
+  * `app/(tabs)/vets.tsx` (`SCR-TAB-002`): Find a Vet directory screen with sticky search, filter modal trigger with active filter counter badge, horizontal specialty chip scroll, active filter dismissal pills, pull-to-refresh, skeleton loading state, error retry state, empty state with filter reset, and card navigation.
+  * `app/booking/[vetId].tsx` (`SCR-BOOK-001` / `FR-VET-002`): Doctor Profile & Live Slots screen displaying biography, license verification badge, rating, reviews, fee, timezone, 14-day date selector strip, time slots grid, disabled "Currently Not Accepting Bookings" state, and strict Phase 5 boundary alert on booking CTA.
+* **Automated Quality Gates:**
+  * `tests/unit/vet-service.test.ts`: Unit tests for `buildSlots`, past slot omission, booked appointment omission (`test_exclude_booked_slots`), text search query (`test_vet_search_query`), specialty filter (`test_vet_filter_specialty`), language/country/price filters, and security verification.
+  * `tests/components/VetScreens.test.tsx`: Component tests for `VetCard`, `VetDirectoryScreen`, and `VetProfileScreen` verifying all UI states, slot selection, not-accepting state, and Phase 5 booking boundary.
+
+---
+
+### 3. Automated Verification Results
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (15 suites, 104 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 32 static routes)
+```
+
+---
+
+### 4. Next Phase
+**Phase 5 — MVP-04 Appointments & Scheduling**  
+*Scope:* Slot reservation, multi-step booking modal (`app/booking/[vetId].tsx` steps 2-4: pet selection, clinical intake notes, format selection, confirmation), appointment management and cancellation (`app/(tabs)/appointments.tsx`).
+
 
 
