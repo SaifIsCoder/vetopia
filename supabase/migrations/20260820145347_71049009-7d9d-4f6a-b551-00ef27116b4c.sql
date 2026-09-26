@@ -1,0 +1,1 @@
+revoke all on function public.touch_conversation() from public, anon, authenticated;

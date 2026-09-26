@@ -139,8 +139,16 @@ This document specifies all REST API endpoints required for the **Vetopia Mobile
 
 ## 3. Appointments Module (`/appointments`)
 
+> **Architectural Implementation Note (Direct Supabase / RPC Architecture):**
+> As established across Phases 1–4, Vetopia mobile communicates directly with Supabase Postgres and RLS. 
+> Rather than proxying through an Express server:
+> - `POST /api/v1/appointments` is implemented via the atomic PostgreSQL RPC `public.book_appointment(...)` (`SECURITY DEFINER`, search_path hardened, pet ownership verified, partial unique index `appointments_vet_scheduled_slot_idx` enforced).
+> - `GET /api/v1/appointments` is executed via Supabase client queries directly against `public.appointments` protected by RLS (`appointments_select_participants`).
+> - Appointment cancellation is implemented via PostgreSQL RPC `public.cancel_appointment(...)`.
+> REST paths below are maintained as logical API contract mappings.
+
 ### `API-BOOK-001`: Book Consultation Appointment
-* **Method & Path:** `POST /api/v1/appointments`
+* **Method & Path:** `POST /api/v1/appointments` (Mapped to `public.book_appointment` RPC)
 * **Purpose:** Reserve a consultation slot and create clinical record.
 * **Authentication:** Bearer JWT (`pet_parent`)
 * **Request Body:**
@@ -203,42 +211,66 @@ This document specifies all REST API endpoints required for the **Vetopia Mobile
 
 ---
 
-### `API-BOOK-003`: Complete Consultation
-* **Method & Path:** `PUT /api/v1/appointments/:id/complete`
-* **Purpose:** Mark consultation completed and trigger prescription handoff.
-* **Authentication:** Bearer JWT (`vet` participant)
-* **Response (200 OK):** `{ "success": true, "data": { "id": "uuid", "status": "completed" } }`
-* **Database Ops:** `UPDATE public.appointments SET status = 'completed' WHERE id = :id`.
-* **Related Screen:** `TelemedicineRoomScreen` (`SCR-TELE-001`).
+### `API-BOOK-003`: Complete Consultation (RPC & REST)
+* **Method & Path:** `rpc('complete_appointment', { p_appointment_id })` / `PUT /api/v1/appointments/:id/complete`
+* **Purpose:** Mark consultation completed and perform atomic state transition.
+* **Authentication:** Bearer JWT (`vet` participant who is assigned to this appointment)
+* **PostgreSQL RPC Implementation:**
+  ```sql
+  complete_appointment(p_appointment_id uuid) RETURNS jsonb
+  SECURITY DEFINER
+  SET search_path = public
+  ```
+* **Authorization Checks:**
+  1. Validates `auth.uid() IS NOT NULL` (Error: 28000).
+  2. Validates appointment exists (Error: P0002).
+  3. Validates status is `'scheduled'` (Error: P0001).
+  4. Validates caller is the consulting veterinarian (`vet.user_id = auth.uid()`, Error: 42501).
+* **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "appointment_id": "c8b4b72e-84b2-4d2a-89a7-9f4482ad5b92",
+    "status": "completed"
+  }
+  ```
+* **Database Ops:** `UPDATE public.appointments SET status = 'completed', updated_at = now() WHERE id = :id`.
+* **Related Screen:** `ConsultRoomScreen` (`app/consult/[id].tsx`).
 
 ---
 
 ### `API-TELE-001`: Generate LiveKit Room Token
 * **Method & Path:** `POST /api/v1/telemedicine/token`
-* **Purpose:** Issue cryptographically signed short-lived LiveKit JWT token for mobile video room.
-* **Authentication:** Bearer JWT (`pet_parent` or `vet` participating in the appointment)
+* **Purpose:** Issue cryptographically signed, short-lived LiveKit JWT access token for mobile RTC consultation.
+* **Authentication:** Bearer JWT (`pet_parent` or `vet` participant in the appointment)
 * **Request Body:**
   ```json
   {
     "appointment_id": "c8b4b72e-84b2-4d2a-89a7-9f4482ad5b92"
   }
   ```
-* **Validation:** Caller must be either `pet_parent_id` or `vet_id` of the appointment. Appointment status must be `scheduled` and within valid time window (T-15m to end).
+* **Server-Side Authorization Invariants:**
+  1. Authenticates Supabase session token (`auth.uid()`).
+  2. Queries appointment by `appointment_id`.
+  3. Validates caller is a participant: `pet.owner_id == auth.uid()` OR `vet.user_id == auth.uid()`.
+  4. Validates appointment status is `'scheduled'`.
+  5. Validates consultation timing: window opens at `starts_at - 15 minutes` (T-15m) and closes at `ends_at + 30 minutes`.
+  6. Room name is deterministically generated server-side: `vetopia-consult-{appointment_id}`.
+  7. Participant identity is deterministically generated server-side: `user_{auth.uid()}`.
 * **Response (200 OK):**
   ```json
   {
-    "success": true,
-    "data": {
-      "server_url": "wss://vetopia-rtc.livekit.cloud",
-      "room_name": "appointment_c8b4b72e-84b2-4d2a-89a7-9f4482ad5b92",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-      "participant_identity": "user_7a4b8c9d-...",
-      "participant_name": "Dr. Sarah Mitchell"
-    }
+    "serverUrl": "wss://vetopia-rtc.livekit.cloud",
+    "roomName": "vetopia-consult-c8b4b72e-84b2-4d2a-89a7-9f4482ad5b92",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "identity": "user_7a4b8c9d-1111-2222-3333-444444444444",
+    "participantName": "Dr. Sarah Mitchell",
+    "expiresIn": 3600
   }
   ```
-* **Service Logic:** Express uses `livekit-server-sdk` `AccessToken` with `VideoGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true })`, TTL 2 hours.
-* **Related Screen:** `TelemedicineRoomScreen` (`SCR-TELE-001`).
+* **Security Grants:** `livekit-server-sdk` `AccessToken` with minimum required grant (`roomJoin: true`, `room: roomName`, `canPublish: true`, `canSubscribe: true`). Token TTL: 1 hour. LiveKit API secrets are never returned.
+* **Errors:** `401 Unauthorized` (Missing/invalid token), `403 Forbidden` (Caller is not participant), `404 Not Found` (Appointment not found), `409 Conflict` (Cancelled/completed or outside consultation window).
+* **Related Screen:** `ConsultRoomScreen` (`app/consult/[id].tsx`).
 
 
 ---
@@ -271,31 +303,92 @@ This document specifies all REST API endpoints required for the **Vetopia Mobile
 
 ## 5. Digital Prescriptions Module (`/prescriptions`)
 
-### `API-PRES-001`: Issue Digital Prescription
-* **Method & Path:** `POST /api/v1/prescriptions`
-* **Purpose:** Doctor writes structured e-prescription for an appointment.
-* **Authentication:** Bearer JWT (`vet`)
-* **Request Body:**
+### `API-PRES-001`: Create Digital Prescription
+* **Architecture Implementation:** Database-side `SECURITY DEFINER` RPC `public.create_prescription` (also mapped via Mobile Data Service `prescriptionService.createPrescription`).
+* **Purpose:** Authoring veterinarian writes structured digital prescription and line items for a completed consultation.
+* **Authentication:** Authenticated Veterinarian (`auth.uid() = vet_profiles.user_id`).
+* **Precondition:** Appointment must exist and have status `'completed'`.
+* **Request Payload:**
   ```json
   {
-    "appointment_id": "uuid",
-    "pet_id": "uuid",
-    "diagnosis": "Acute Gastroenteritis",
-    "notes": "Ensure abundant water intake",
+    "appointment_id": "11111111-2222-3333-4444-555555555555",
+    "diagnosis": "Canine Atopic Dermatitis",
+    "notes": "Administer oral tablets with morning food. Clean paws daily.",
+    "refills_allowed": 1,
     "items": [
       {
-        "medication_name": "Metronidazole",
-        "dosage": "250mg",
-        "frequency": "Twice daily",
-        "duration_days": 7,
-        "instructions": "Administer with meal"
+        "medication_name": "Apoquel (Oclacitinib)",
+        "dosage": "16mg",
+        "frequency": "Twice daily for 14 days, then once daily",
+        "duration": "30 days",
+        "special_instructions": "Give with or without food"
       }
     ]
   }
   ```
-* **Response (201 Created):** `{ "success": true, "data": { "prescription_id": "uuid" } }`
-* **Database Ops:** Inserts into `public.prescriptions` and `public.prescription_items`. Dispatches push notification to pet parent.
-* **Related Screen:** `CreatePrescriptionScreen`.
+* **Response (200 OK / 201 Created):**
+  ```json
+  {
+    "success": true,
+    "prescription_id": "33333333-4444-5555-6666-777777777777",
+    "appointment_id": "11111111-2222-3333-4444-555555555555",
+    "item_count": 1
+  }
+  ```
+* **Security & Constraints:**
+  * Client cannot override `vet_id` or `pet_id` (derived strictly from authenticated doctor and appointment record).
+  * Unique constraint `UNIQUE (appointment_id)` prevents duplicate prescriptions.
+  * Controlled substances (Schedules II–V) strictly prohibited.
+* **Related Screen:** `CreatePrescriptionScreen` (`app/consult/[id]/prescription.tsx`).
+
+---
+
+### `API-PRES-002`: View & Export Digital Prescription
+* **Architecture Implementation:** Supabase RLS Query `public.prescriptions` + client-side PDF compilation via `expo-print` and `expo-sharing`.
+* **Purpose:** Retrieve structured prescription record and export official PDF for pet parents and consulting veterinarians.
+* **Authentication:** Authenticated Pet Owner (`pets.owner_id = auth.uid()`) or Authoring Veterinarian (`vet_profiles.user_id = auth.uid()`).
+* **Parameters:** `id` (`UUID`, path parameter).
+* **Response (200 OK):**
+  ```json
+  {
+    "id": "33333333-4444-5555-6666-777777777777",
+    "appointment_id": "11111111-2222-3333-4444-555555555555",
+    "vet_id": "vet-profile-1",
+    "pet_id": "pet-123",
+    "diagnosis": "Canine Atopic Dermatitis",
+    "notes": "Administer oral tablets with morning food.",
+    "refills_allowed": 1,
+    "status": "active",
+    "created_at": "2026-10-01T10:35:00Z",
+    "items": [
+      {
+        "id": "item-1",
+        "prescription_id": "33333333-4444-5555-6666-777777777777",
+        "medication_name": "Apoquel (Oclacitinib)",
+        "dosage": "16mg",
+        "frequency": "Twice daily",
+        "duration": "30 days",
+        "special_instructions": "Give with food"
+      }
+    ],
+    "vet": {
+      "name": "Dr. Sarah Mitchell",
+      "specialty": "General Veterinary Medicine",
+      "country": "United Kingdom",
+      "flag": "🇬🇧",
+      "verified": true
+    },
+    "pet": {
+      "name": "Luna",
+      "species": "Canine",
+      "breed": "Golden Retriever",
+      "age": "3 years",
+      "weight_kg": 28.5
+    }
+  }
+  ```
+* **PDF Export:** Generated via `Print.printToFileAsync` and shared via `Sharing.shareAsync` with official Vetopia branding, patient snapshot, medication table, and legal disclaimer.
+* **Related Screen:** `PrescriptionDetailScreen` (`app/prescriptions/[id].tsx`).
 
 ---
 

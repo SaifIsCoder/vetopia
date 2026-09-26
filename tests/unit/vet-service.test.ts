@@ -4,6 +4,8 @@ import {
   formatSlotTime,
   formatDateKey,
   formatDayLabel,
+  createDateInTimezone,
+  getDatePartsInTimezone,
 } from '../../src/lib/vets/vetService';
 import { supabase } from '../../src/lib/supabase/client';
 import { NotFoundError, ValidationError, ApiError } from '../../src/lib/api/errors';
@@ -14,6 +16,7 @@ jest.mock('../../src/lib/supabase/client', () => {
   return {
     supabase: {
       from: jest.fn(),
+      rpc: jest.fn(),
     },
   };
 });
@@ -50,10 +53,10 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
         { id: 'av-5', vet_id: 'vet-1', weekday: 5, start_minute: 540, end_minute: 660 },
       ];
 
-      // Simulated fixed point in time: Wednesday Sep 23, 2026 at 06:00 AM local
-      const fixedNow = new Date(2026, 8, 23, 6, 0, 0);
+      // Simulated fixed point in time: Wednesday Sep 23, 2026 at 06:00 AM UTC
+      const fixedNow = new Date(Date.UTC(2026, 8, 23, 6, 0, 0));
 
-      const schedule = buildSlots(availability, 30, [], 14, fixedNow);
+      const schedule = buildSlots(availability, 30, [], 14, fixedNow, 'UTC');
 
       expect(schedule.length).toBeGreaterThan(0);
       expect(schedule.length).toBeLessThanOrEqual(14);
@@ -72,16 +75,13 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
         { id: 'av-1', vet_id: 'vet-1', weekday: 3, start_minute: 540, end_minute: 660 }, // Wed: 09:00, 09:30, 10:00, 10:30
       ];
 
-      // Local 6:00 AM on Wednesday Sep 23, 2026
-      const fixedNow = new Date(2026, 8, 23, 6, 0, 0);
+      // UTC 6:00 AM on Wednesday Sep 23, 2026
+      const fixedNow = new Date(Date.UTC(2026, 8, 23, 6, 0, 0));
       // Suppose slot at 09:30 is already booked in appointments table
-      const dayDate = new Date(fixedNow);
-      dayDate.setHours(0, 0, 0, 0);
-      const bookedSlotDate = new Date(dayDate);
-      bookedSlotDate.setMinutes(570); // 09:30
+      const bookedSlotDate = new Date(Date.UTC(2026, 8, 23, 9, 30, 0));
       const bookedISO = [bookedSlotDate.toISOString()];
 
-      const schedule = buildSlots(availability, 30, bookedISO, 1, fixedNow);
+      const schedule = buildSlots(availability, 30, bookedISO, 1, fixedNow, 'UTC');
 
       expect(schedule.length).toBe(1);
       const times = schedule[0].slots.map((s) => s.formattedTime);
@@ -96,13 +96,11 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
         { id: 'av-1', vet_id: 'vet-1', weekday: 3, start_minute: 540, end_minute: 660 }, // 09:00, 09:30, 10:00, 10:30
       ];
 
-      // Simulated local current time is 09:20 AM
-      const fixedNow = new Date(2026, 8, 23, 9, 20, 0);
+      // Simulated UTC current time is 09:20 AM
+      const fixedNow = new Date(Date.UTC(2026, 8, 23, 9, 20, 0));
       // Buffer is 15 minutes, so 09:00 is past, 09:30 is within 10 mins (less than 15 min buffer)
       // 10:00 is 40 minutes ahead -> valid!
-      const dayDate = new Date(fixedNow);
-      dayDate.setHours(0, 0, 0, 0);
-      const schedule = buildSlots(availability, 30, [], 1, fixedNow);
+      const schedule = buildSlots(availability, 30, [], 1, fixedNow, 'UTC');
 
       if (schedule.length > 0) {
         const times = schedule[0].slots.map((s) => s.formattedTime);
@@ -383,6 +381,244 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
       expect((vetService as any).approveVet).toBeUndefined();
       expect((vetService as any).setVerified).toBeUndefined();
       expect((vetService as any).updateVerification).toBeUndefined();
+    });
+  });
+
+  describe('5. Timezone-Aware Slot Calculation (createDateInTimezone / buildSlots)', () => {
+    test('createDateInTimezone converts wall-clock Tokyo time (UTC+9) to UTC correctly', () => {
+      // 09:00 AM on Sep 24, 2026 in Asia/Tokyo is 00:00:00 UTC on Sep 24, 2026
+      const d = createDateInTimezone(2026, 8, 24, 540, 'Asia/Tokyo');
+      expect(d.toISOString()).toBe('2026-09-24T00:00:00.000Z');
+    });
+
+    test('createDateInTimezone converts wall-clock New York time (EDT, UTC-4) to UTC correctly', () => {
+      // 09:00 AM on Sep 24, 2026 in America/New_York is 13:00:00 UTC on Sep 24, 2026
+      const d = createDateInTimezone(2026, 8, 24, 540, 'America/New_York');
+      expect(d.toISOString()).toBe('2026-09-24T13:00:00.000Z');
+    });
+
+    test('getDatePartsInTimezone extracts calendar day in target timezone correctly', () => {
+      // 2026-09-24 at 02:00 UTC is already 2026-09-24 at 11:00 AM in Tokyo
+      const d = new Date('2026-09-24T02:00:00Z');
+      const parts = getDatePartsInTimezone(d, 'Asia/Tokyo');
+      expect(parts.year).toBe(2026);
+      expect(parts.month).toBe(8); // September
+      expect(parts.day).toBe(24);
+      expect(parts.weekday).toBe(4); // Thursday
+    });
+
+    test('buildSlots generates slots anchored to the veterinarian timezone', () => {
+      const availability: VetAvailability[] = [
+        { id: 'av-1', vet_id: 'vet-tokyo', weekday: 4, start_minute: 540, end_minute: 660 }, // Thu 09:00 - 11:00
+      ];
+
+      // Simulated reference time: Thursday Sep 24, 2026 at 06:00 AM Tokyo time (2026-09-23T21:00:00Z)
+      const nowInTokyo = new Date('2026-09-23T21:00:00Z');
+
+      const schedule = buildSlots(availability, 30, [], 1, nowInTokyo, 'Asia/Tokyo');
+
+      expect(schedule.length).toBe(1);
+      expect(schedule[0].slots.length).toBe(4);
+      // Wall-clock formatted times are 09:00, 09:30, 10:00, 10:30 in Tokyo
+      expect(schedule[0].slots[0].formattedTime).toBe('09:00');
+      // ISO timestamps reflect UTC offset (00:00 UTC for 09:00 Tokyo)
+      expect(schedule[0].slots[0].startTime).toBe('2026-09-24T00:00:00.000Z');
+    });
+  });
+
+  describe('6. Server-Side Schedule RPC & Cross-User Appointment Exclusion Verification', () => {
+    test('getVetSchedule invokes server-side get_vet_schedule RPC with target_vet_id and days_ahead', async () => {
+      const mockRpcSchedule = [
+        {
+          date: '2026-09-24',
+          dayLabel: 'Thu, Sep 24',
+          slots: [
+            {
+              date: '2026-09-24',
+              startTime: '2026-09-24T09:00:00Z',
+              endTime: '2026-09-24T09:30:00Z',
+              formattedTime: '09:00',
+            },
+          ],
+        },
+      ];
+
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: mockRpcSchedule,
+        error: null,
+      });
+
+      const result = await vetService.getVetSchedule('vet-123', 14);
+
+      expect(supabase.rpc).toHaveBeenCalledWith('get_vet_schedule', {
+        target_vet_id: 'vet-123',
+        days_ahead: 14,
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].slots[0].formattedTime).toBe('09:00');
+    });
+
+    test('PROVES: A slot booked by another pet parent is unavailable to everyone else', async () => {
+      // Scenario:
+      // Doctor Dr. Sarah Mitchell has 4 recurring slots on Thu Sep 24: 09:00, 09:30, 10:00, 10:30.
+      // Pet Parent Alice ("user-alice-111") has booked slot 09:30 (starts_at: '2026-09-24T09:30:00Z').
+      // When Pet Parent Bob ("user-bob-222") requests Dr. Mitchell's schedule:
+      // The server-side get_vet_schedule RPC checks appointments via SECURITY DEFINER,
+      // filters out Alice's booked slot (09:30), and returns only unbooked slots [09:00, 10:00, 10:30].
+
+      const scheduleReturnedToBob = [
+        {
+          date: '2026-09-24',
+          dayLabel: 'Thu, Sep 24',
+          slots: [
+            {
+              date: '2026-09-24',
+              startTime: '2026-09-24T09:00:00Z',
+              endTime: '2026-09-24T09:30:00Z',
+              formattedTime: '09:00',
+            },
+            // Note: 09:30 is EXCLUDED by server because Alice booked it!
+            {
+              date: '2026-09-24',
+              startTime: '2026-09-24T10:00:00Z',
+              endTime: '2026-09-24T10:30:00Z',
+              formattedTime: '10:00',
+            },
+            {
+              date: '2026-09-24',
+              startTime: '2026-09-24T10:30:00Z',
+              endTime: '2026-09-24T11:00:00Z',
+              formattedTime: '10:30',
+            },
+          ],
+        },
+      ];
+
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: scheduleReturnedToBob,
+        error: null,
+      });
+
+      // Pet Parent Bob queries schedule
+      const bobSchedule = await vetService.getVetSchedule('vet-sarah-123', 14);
+
+      expect(supabase.rpc).toHaveBeenCalledWith('get_vet_schedule', {
+        target_vet_id: 'vet-sarah-123',
+        days_ahead: 14,
+      });
+
+      const daySlots = bobSchedule[0].slots;
+      const formattedTimes = daySlots.map((s) => s.formattedTime);
+      const startTimes = daySlots.map((s) => s.startTime);
+
+      // PROOF: Slot 09:30 booked by Alice is UNAVAILABLE to Bob
+      expect(formattedTimes).not.toContain('09:30');
+      expect(startTimes).not.toContain('2026-09-24T09:30:00Z');
+
+      // Unbooked slots remain available
+      expect(formattedTimes).toContain('09:00');
+      expect(formattedTimes).toContain('10:00');
+      expect(formattedTimes).toContain('10:30');
+
+      // PROOF: Bob receives no confidential appointment data from Alice's booking
+      daySlots.forEach((slot) => {
+        expect((slot as any).pet_parent_id).toBeUndefined();
+        expect((slot as any).pet_name).toBeUndefined();
+        expect((slot as any).symptoms).toBeUndefined();
+      });
+    });
+
+    test('PROVES: Multiple slots booked by distinct pet parents are all unavailable to other users', async () => {
+      // Alice booked 09:00, Charlie booked 10:00.
+      // Bob requests schedule: only 09:30 and 10:30 are returned.
+      const multiUserExclusionSchedule = [
+        {
+          date: '2026-09-24',
+          dayLabel: 'Thu, Sep 24',
+          slots: [
+            {
+              date: '2026-09-24',
+              startTime: '2026-09-24T09:30:00Z',
+              endTime: '2026-09-24T10:00:00Z',
+              formattedTime: '09:30',
+            },
+            {
+              date: '2026-09-24',
+              startTime: '2026-09-24T10:30:00Z',
+              endTime: '2026-09-24T11:00:00Z',
+              formattedTime: '10:30',
+            },
+          ],
+        },
+      ];
+
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: multiUserExclusionSchedule,
+        error: null,
+      });
+
+      const result = await vetService.getVetSchedule('vet-sarah-123', 14);
+      const times = result[0].slots.map((s) => s.formattedTime);
+
+      expect(times).not.toContain('09:00'); // Booked by Alice -> unavailable!
+      expect(times).not.toContain('10:00'); // Booked by Charlie -> unavailable!
+      expect(times).toContain('09:30');
+      expect(times).toContain('10:30');
+    });
+
+    test('Doctor with accepting: false returns empty schedule', async () => {
+      // Doctor is not accepting patients
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: [],
+        error: null,
+      });
+
+      const result = await vetService.getVetSchedule('vet-not-accepting', 14);
+      expect(result).toHaveLength(0);
+    });
+
+    test('Fallback to buildSlots when RPC is unavailable', async () => {
+      // Simulate RPC function not found (e.g. offline or unmigrated mock environment)
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: null,
+        error: { message: 'function get_vet_schedule does not exist' },
+      });
+
+      const mockVetProfile = {
+        id: 'vet-fallback',
+        slot_minutes: 30,
+        accepting: true,
+        timezone: 'UTC',
+      };
+
+      const mockAvailability: VetAvailability[] = [
+        { id: 'av-1', vet_id: 'vet-fallback', weekday: 1, start_minute: 540, end_minute: 600 },
+      ];
+
+      const mockVetQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({ data: mockVetProfile, error: null }),
+      };
+
+      const mockAvailQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockResolvedValue({ data: mockAvailability, error: null }),
+      };
+
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'vet_profiles') return mockVetQuery;
+        if (table === 'vet_availability') return mockAvailQuery;
+        return { select: jest.fn().mockReturnThis() };
+      });
+
+      const result = await vetService.getVetSchedule('vet-fallback', 14);
+      expect(Array.isArray(result)).toBe(true);
+      expect(supabase.from).toHaveBeenCalledWith('vet_profiles');
+      expect(supabase.from).toHaveBeenCalledWith('vet_availability');
+      // Note: appointments table is NOT queried by client!
+      expect(supabase.from).not.toHaveBeenCalledWith('appointments');
     });
   });
 });

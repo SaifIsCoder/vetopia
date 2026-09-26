@@ -138,6 +138,15 @@ BEGIN
   RETURN to_jsonb(updated_row);
 END;
 $$;
+
+-- 8. Secure Server-Side Schedule RPC (FR-VET-002)
+-- Evaluates recurring vet_availability minus all scheduled appointments across all users
+-- in the veterinarian's authoritative timezone without leaking patient PII or confidential notes.
+CREATE OR REPLACE FUNCTION public.get_vet_schedule(target_vet_id uuid, days_ahead int default 14)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+-- (See supabase/migrations/20260925120000_vet_schedule_rpc.sql for complete implementation)
+$$;
+GRANT EXECUTE ON FUNCTION public.get_vet_schedule(uuid, int) TO anon, authenticated, service_role;
 ```
 
 ### 2.4 Appointments (`public.appointments`)
@@ -172,61 +181,92 @@ CREATE POLICY "appointments_update_participants"
   );
 ```
 
-### 2.5 WebRTC Call Signals & In-Call Messages (`call_signals`, `messages`)
-```sql
-ALTER TABLE public.call_signals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+#### Atomic Server-Side RPC Functions (Phase 5 / MVP-04)
+To eliminate client-side race conditions and guarantee that pet parents only book their own pets:
+1. `public.book_appointment(...)`:
+   - `SECURITY DEFINER` with immutable `SET search_path = public, auth`.
+   - Enforces `auth.uid() IS NOT NULL` (rejects anonymous booking).
+   - Enforces pet ownership: `SELECT id FROM public.pets WHERE id = p_pet_id AND owner_id = auth.uid()`.
+   - Validates veterinarian status (`accepting = true`) and 15-minute advance buffer.
+   - Relies on unique partial index `appointments_vet_scheduled_slot_idx` to guarantee atomic conflict handling (raises error code `23505`).
+2. `public.cancel_appointment(...)`:
+   - `SECURITY DEFINER` with immutable `SET search_path = public, auth`.
+   - Verifies caller is a participant (`pet_parent_id = auth.uid()` or assigned doctor).
+   - Sets status to `'cancelled'`, freeing the partial index slot for re-booking.
+   - Detects late cancellation (< 2 hours).
+3. `public.complete_appointment(...)` (Phase 6 / MVP-05):
+   - `SECURITY DEFINER` with immutable `SET search_path = public`.
+   - Enforces `auth.uid() IS NOT NULL` (Error: `28000`).
+   - Verifies appointment exists (Error: `P0002`).
+   - Verifies appointment status is currently `'scheduled'` (Error: `P0001`).
+   - Verifies caller is strictly the assigned veterinarian: `v_vet.user_id = auth.uid()` (Error: `42501`). Pet parents cannot mark appointments as completed.
+   - Atomically updates appointment status to `'completed'` and `updated_at = now()`.
+   - Disallows re-completion of already completed or cancelled consultations.
 
--- Signals and messages are strictly restricted to verified appointment participants
-CREATE POLICY "signals_participants_all" 
-  ON public.call_signals FOR ALL USING (
-    public.is_appointment_participant(appointment_id, auth.uid())
-  ) WITH CHECK (
-    sender_id = auth.uid() AND public.is_appointment_participant(appointment_id, auth.uid())
-  );
+### 2.5 Telemedicine Media & Signaling Infrastructure (LiveKit Cloud Managed SFU)
 
-CREATE POLICY "messages_participants_all" 
-  ON public.messages FOR ALL USING (
-    public.is_appointment_participant(appointment_id, auth.uid())
-  ) WITH CHECK (
-    sender_id = auth.uid() AND public.is_appointment_participant(appointment_id, auth.uid())
-  );
-```
+> [!IMPORTANT]
+> **SUPERSEDED ARCHITECTURE:** The legacy `call_signals` table and custom WebRTC SDP/ICE signaling have been completely removed and superseded. LiveKit Cloud Managed SFU handles all RTC signaling and media transport.
 
-### 2.6 Digital Prescriptions (`public.prescriptions`, `public.prescription_items`)
+* **No Database Signaling Table:** No `call_signals` or SDP/ICE exchange table exists in the database.
+* **Token Authorization:** Authenticated users request short-lived LiveKit JWTs via backend API `POST /api/v1/telemedicine/token`.
+* **Zero Media Storage in Database:** Audio/video streams flow exclusively through encrypted LiveKit SFU channels and are never stored in PostgreSQL.
+
+### 2.6 Digital Prescriptions (`public.prescriptions`, `public.prescription_items`) `[IMPLEMENTED MVP-06]`
 ```sql
 ALTER TABLE public.prescriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prescription_items ENABLE ROW LEVEL SECURITY;
 
--- Pet parent of the prescribed pet and the authoring vet can read prescriptions
+-- 1. Pet parent of the prescribed pet, the authoring vet, and admins can view prescriptions
 CREATE POLICY "prescriptions_select_authorized" 
-  ON public.prescriptions FOR SELECT USING (
+  ON public.prescriptions FOR SELECT TO authenticated
+  USING (
     EXISTS (SELECT 1 FROM public.pets p WHERE p.id = pet_id AND p.owner_id = auth.uid()) OR
     EXISTS (SELECT 1 FROM public.vet_profiles v WHERE v.id = vet_id AND v.user_id = auth.uid()) OR
-    public.has_role(auth.uid(), 'admin')
+    public.has_role(auth.uid(), 'admin'::public.app_role)
   );
 
--- Only verified doctors can issue a prescription linked to their appointment
-CREATE POLICY "prescriptions_insert_vet" 
-  ON public.prescriptions FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.vet_profiles v WHERE v.id = vet_id AND v.user_id = auth.uid())
-  );
-
--- Prescriptions are immutable: NO UPDATE POLICY GRANTED
+-- 2. Line items can only be read by actors authorized to view the parent prescription
 CREATE POLICY "prescription_items_select" 
-  ON public.prescription_items FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.prescriptions p WHERE p.id = prescription_id)
-  );
-
-CREATE POLICY "prescription_items_insert_vet" 
-  ON public.prescription_items FOR INSERT WITH CHECK (
+  ON public.prescription_items FOR SELECT TO authenticated
+  USING (
     EXISTS (
       SELECT 1 FROM public.prescriptions p
-      JOIN public.vet_profiles v ON v.id = p.vet_id
-      WHERE p.id = prescription_id AND v.user_id = auth.uid()
+      WHERE p.id = prescription_id AND (
+        EXISTS (SELECT 1 FROM public.pets pet WHERE pet.id = p.pet_id AND pet.owner_id = auth.uid()) OR
+        EXISTS (SELECT 1 FROM public.vet_profiles v WHERE v.id = p.vet_id AND v.user_id = auth.uid()) OR
+        public.has_role(auth.uid(), 'admin'::public.app_role)
+      )
     )
   );
+
+-- 3. Immutability guarantee: NO direct INSERT/UPDATE/DELETE granted to clients.
+-- All prescription creation must execute through the transactional SECURITY DEFINER RPC.
 ```
+
+#### Security Definer RPC: `public.create_prescription`
+```sql
+CREATE OR REPLACE FUNCTION public.create_prescription(
+  p_appointment_id UUID,
+  p_diagnosis TEXT,
+  p_notes TEXT DEFAULT NULL,
+  p_refills_allowed INT DEFAULT 0,
+  p_items JSONB DEFAULT '[]'::JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp;
+```
+
+* **Security Boundary Guarantees:**
+  1. **Authentication Enforcement:** Ensures `auth.uid() IS NOT NULL` (Error: `28000`).
+  2. **Role Verification:** Queries `public.vet_profiles` where `user_id = auth.uid()`. Throws `42501` if caller is not a registered doctor.
+  3. **Appointment Existence & Status Precondition:** Queries `public.appointments` for `p_appointment_id`. If missing, throws `P0002`. If `status != 'completed'`, throws `22023` (prescriptions can only be issued for completed visits).
+  4. **Doctor Assignment Verification:** Strictly asserts `appointment.vet_id = v_vet_id`. Throws `42501` if doctor attempts to prescribe for another vet's patient.
+  5. **Client Tamper Proofing:** The client does **NOT** provide `vet_id` or `pet_id`. They are resolved server-side from verified database records.
+  6. **Single-Prescription Policy:** The unique constraint `UNIQUE (appointment_id)` prevents accidental or malicious double-prescriptions (Error: `23505`).
+  7. **Transactional Atomicity:** If any medication item fails validation or insertion, the entire transaction rolls back cleanly. No partial or corrupt prescriptions can exist.
 
 ### 2.7 Storage Buckets (`storage.objects`)
 ```sql

@@ -69,6 +69,15 @@ jest.mock('../../src/hooks/usePets', () => ({
   }),
 }));
 
+// Mock usePrescriptions hook
+jest.mock('../../src/hooks/usePrescriptions', () => ({
+  usePetPrescriptions: jest.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  })),
+}));
+
 // Mock authStore
 jest.mock('../../src/store/authStore', () => ({
   useAuthStore: () => ({

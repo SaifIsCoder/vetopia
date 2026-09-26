@@ -68,7 +68,16 @@ class AuthService {
       throw new ValidationError('Please enter your full name (minimum 2 characters).');
     }
 
+    console.info('🚀 [AuthService.register] Starting account registration:', {
+      email: email.trim(),
+      fullName: fullName.trim(),
+      role,
+      specialty: role === 'vet' ? specialty : undefined,
+      priceUsd: role === 'vet' ? priceUsd : undefined,
+    });
+
     try {
+      console.info('📡 [AuthService.register] Sending supabase.auth.signUp request...');
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -79,7 +88,22 @@ class AuthService {
         },
       });
 
+      console.info('📥 [AuthService.register] signUp response received:', {
+        hasUser: !!data?.user,
+        userId: data?.user?.id,
+        userEmail: data?.user?.email,
+        emailConfirmedAt: data?.user?.email_confirmed_at,
+        identitiesCount: data?.user?.identities?.length,
+        hasSession: !!data?.session,
+        hasError: !!error,
+      });
+
       if (error) {
+        console.error('❌ [AuthService.register] signUp returned error:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+        });
         this.handleAuthError(error);
       }
 
@@ -87,53 +111,112 @@ class AuthService {
       const session = data.session;
 
       if (!user) {
+        console.error('❌ [AuthService.register] No user object returned by Supabase');
         throw new ApiError('Failed to create account. Please try again.', 500);
+      }
+
+      // Check if user already exists (Supabase returns user with empty identities array when email confirmation is active)
+      if (Array.isArray(user.identities) && user.identities.length === 0) {
+        console.warn('⚠️ [AuthService.register] User already exists (identities list is empty).');
+        throw new ApiError(
+          'An account with this email already exists. Please sign in instead.',
+          409,
+          'DUPLICATE_EMAIL',
+        );
+      }
+
+      if (!session) {
+        console.warn(
+          '⚠️ [AuthService.register] User created in auth.users, but NO active session returned.',
+          'This means "Confirm email" is ENABLED in your Supabase project settings.',
+          'The user must click the confirmation email link before Supabase issues an active session.',
+        );
       }
 
       // Upsert profile record
       try {
-        await supabase.from('profiles').upsert({
+        console.info('📝 [AuthService.register] Upserting public.profiles for user:', user.id);
+        const { data: pData, error: pError } = await supabase.from('profiles').upsert({
           id: user.id,
           full_name: fullName.trim(),
           onboarded: false,
         });
+
+        if (pError) {
+          console.error('❌ [AuthService.register] Profile upsert error:', pError);
+        } else {
+          console.info('✅ [AuthService.register] Profile upserted successfully:', pData);
+        }
       } catch (e) {
-        console.warn('[AuthService] Profile upsert warning:', e);
+        console.error('❌ [AuthService.register] Profile upsert exception:', e);
       }
 
       // Assign requested role in public.user_roles
       try {
-        await supabase.from('user_roles').insert({
+        console.info('🛡️ [AuthService.register] Inserting public.user_roles:', {
+          userId: user.id,
+          role,
+        });
+        const { data: rData, error: rError } = await supabase.from('user_roles').insert({
           user_id: user.id,
           role,
         });
+
+        if (rError) {
+          console.error('❌ [AuthService.register] User role insert error:', rError);
+        } else {
+          console.info('✅ [AuthService.register] User role inserted successfully:', rData);
+        }
       } catch (e) {
-        console.warn('[AuthService] Role assignment warning:', e);
+        console.error('❌ [AuthService.register] Role assignment exception:', e);
       }
 
       // If registered as vet, create vet_profiles record with verified: false
       if (role === 'vet') {
         try {
-          await supabase.from('vet_profiles').insert({
+          console.info(
+            '🩺 [AuthService.register] Inserting public.vet_profiles for vet user:',
+            user.id,
+          );
+          const { data: vData, error: vError } = await supabase.from('vet_profiles').insert({
             user_id: user.id,
             name: fullName.trim(),
             specialty: specialty || 'General Veterinary Medicine',
             price_usd: priceUsd || 29,
             verified: false,
           });
+
+          if (vError) {
+            console.error('❌ [AuthService.register] Vet profile insert error:', vError);
+          } else {
+            console.info('✅ [AuthService.register] Vet profile created successfully:', vData);
+          }
         } catch (e) {
-          console.warn('[AuthService] Vet profile creation warning:', e);
+          console.error('❌ [AuthService.register] Vet profile creation exception:', e);
         }
       }
 
       let profile: UserProfile | null = null;
       if (session) {
+        console.info('🔄 [AuthService.register] Session established. Loading user profile...');
         profile = await this.loadUserProfile(user.id, user.email);
+        console.info('✅ [AuthService.register] User profile loaded:', profile);
         useAuthStore.getState().setSession(session, profile);
+      } else {
+        console.info(
+          'ℹ️ [AuthService.register] Session is null (email confirmation required). Skipping auto-login.',
+        );
       }
+
+      console.info('🏁 [AuthService.register] Registration completed with return payload:', {
+        userId: user.id,
+        hasSession: !!session,
+        profileFound: !!profile,
+      });
 
       return { user, session, profile };
     } catch (err) {
+      console.error('💥 [AuthService.register] Uncaught registration error:', err);
       throw this.sanitizeError(err);
     }
   }
@@ -372,7 +455,15 @@ class AuthService {
       throw new ValidationError('Password must be at least 6 characters long.');
     }
 
-    if (lower.includes('rate limit') || error.status === 429) {
+    const code = (error.code || '').toLowerCase();
+    if (
+      lower.includes('rate limit') ||
+      lower.includes('rate_limit') ||
+      code.includes('rate_limit') ||
+      code === 'over_email_send_rate_limit' ||
+      code === 'over_request_rate_limit' ||
+      error.status === 429
+    ) {
       throw new ApiError(
         'Too many attempts. Please try again in a few minutes.',
         429,

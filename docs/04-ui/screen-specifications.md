@@ -229,19 +229,39 @@ This document specifies every screen included in the **Vetopia Mobile MVP**. All
 
 ---
 
-### Screen `SCR-PRES-001`: Prescription Detail Screen
-* **File Path:** `mobile/app/prescriptions/[id].tsx`
-* **Purpose:** Display structured digital prescription and legal medical instructions.
-* **Allowed Roles:** Authoring Vet, Pet Parent of prescribed pet.
-* **Entry Points:** Past appointment detail, Care Hub prescriptions list, push notification tap.
+### Screen `SCR-PRES-001`: Create Digital Prescription Screen
+* **File Path:** `mobile/app/consult/[id]/prescription.tsx`
+* **Purpose:** Authoritative form for consulting veterinarians to issue a structured digital prescription upon consultation completion.
+* **Allowed Roles:** Authenticated Consulting Veterinarian (`isVet = true`, `appointment.vet_id = vetProfile.id`).
+* **Precondition:** Appointment status must be `completed`.
+* **Entry Points:** Post-consultation alert CTA ("Create Prescription"), Appointments Hub completed card CTA.
 * **UI Structure:**
-  * Header: Clinic header, prescribing doctor name, medical license number.
-  * Patient Info: Pet name, species, breed, age, owner name.
-  * Medication Table: Drug name, form (tablet/liquid), dosage, frequency, duration, instructions.
-  * Legal Disclaimer: Valid digital veterinary prescription disclaimer.
-  * Bottom Bar: "Download PDF" button, "Refill Inquiry" button.
-* **API Dependencies:** `GET /api/v1/prescriptions/:id`.
-* **Database Dependencies:** `public.prescriptions`, `public.prescription_items`.
+  * Header: Title, subtitle, back/cancel navigation.
+  * Consultation Context Banner: Patient snapshot (name, species, breed), consultation date, doctor name, completed status badge.
+  * Clinical Assessment Section: Primary Diagnosis (required text input), Clinical Notes & Advice (multiline text area), Refills Allowed (integer input).
+  * Medication Regimen Section: Heading with drug counter, "Add Drug" button, dynamic `MedicationItemRow` list with Edit and Remove actions, empty placeholder card.
+  * Regulatory Disclaimer: Controlled substances (Schedules II–V) exclusion statement.
+  * Action Bar: "Issue Digital Prescription" primary button (with loading spinner and double-submission protection).
+  * Modal: `MedicationFormModal` for inputting drug name, dosage/strength, frequency, duration, and instructions.
+* **API / Database Dependencies:** `public.create_prescription` RPC, `public.prescriptions`, `public.prescription_items`.
+* **Related Requirements:** `FR-PRES-001`.
+
+---
+
+### Screen `SCR-PRES-002`: Digital Prescription Detail Screen
+* **File Path:** `mobile/app/prescriptions/[id].tsx`
+* **Purpose:** Display structured digital prescription, clinical medication table, doctor credentials, and official PDF export.
+* **Allowed Roles:** Authoring Vet, Pet Parent of prescribed pet, Administrator.
+* **Entry Points:** Completed appointment card ("View Prescription"), Pet Passport prescriptions section, prescription creation completion alert.
+* **UI Structure:**
+  * Top Bar: Back button, active status badge.
+  * Header: RX icon, official digital RX badge, prescription reference ID, issuance date.
+  * PDF Export Card: Document description and "Export PDF" button (invoking `expo-print` and `expo-sharing`).
+  * Profile Snapshot Grid: Patient card (name, species, breed, age, weight) and Prescribing Doctor card (name, specialty, country/flag, verified badge).
+  * Clinical Assessment Card: Primary diagnosis, clinical notes, refills authorized count.
+  * Medication Regimen List: Structured `MedicationItemRow` components displaying dosage, schedule, duration, instructions.
+  * Digital Authorization Card: Electronically signed representation, doctor verification timestamp, legal regulatory disclaimer.
+* **API / Database Dependencies:** `public.prescriptions`, `public.prescription_items`, `expo-print`, `expo-sharing`.
 * **Related Requirements:** `FR-PRES-002`.
 
 ---

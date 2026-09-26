@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   User,
@@ -10,6 +10,7 @@ import {
   Stethoscope,
   Heart,
   AlertCircle,
+  CheckCircle2,
   CheckSquare,
   Square,
   DollarSign,
@@ -40,6 +41,7 @@ export default function RegisterScreen() {
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     fullName?: string;
     email?: string;
@@ -72,16 +74,37 @@ export default function RegisterScreen() {
     }
 
     setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    const isValid = Object.keys(errors).length === 0;
+    if (!isValid) {
+      console.warn('⚠️ [RegisterScreen] Validation failed with errors:', errors);
+    }
+    return isValid;
   };
 
   const handleRegister = async () => {
     setErrorMessage(null);
-    if (!validate()) return;
+    setSuccessMessage(null);
+
+    console.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.info('📝 [RegisterScreen] "Create Account" button pressed');
+    console.info('📝 [RegisterScreen] Submitted form details:', {
+      fullName: fullName.trim(),
+      email: email.trim(),
+      role,
+      specialty: role === 'vet' ? specialty : undefined,
+      priceUsd: role === 'vet' ? priceUsd : undefined,
+      agreedToTerms,
+    });
+
+    if (!validate()) {
+      console.warn('⚠️ [RegisterScreen] Registration aborted due to validation errors.');
+      return;
+    }
 
     setLoading(true);
     try {
-      await authService.register({
+      console.info('🚀 [RegisterScreen] Sending registration to Supabase via authService...');
+      const result = await authService.register({
         email: email.trim(),
         password,
         fullName: fullName.trim(),
@@ -89,10 +112,51 @@ export default function RegisterScreen() {
         specialty: role === 'vet' ? specialty : undefined,
         priceUsd: role === 'vet' ? parseFloat(priceUsd) || 29 : undefined,
       });
-      // AuthGatekeeper automatically transitions to (auth)/onboarding
+
+      console.info('📥 [RegisterScreen] Registration completed with response:', {
+        userId: result.user?.id,
+        userEmail: result.user?.email,
+        hasSession: !!result.session,
+        profileFound: !!result.profile,
+      });
+
+      if (!result.session) {
+        console.warn(
+          '⚠️ [RegisterScreen] Account created, but NO active session returned.',
+          'Supabase "Confirm email" is ENABLED. The user must verify their email before sign-in.',
+        );
+        const notice = `We sent a confirmation link to ${email.trim()}. Please check your inbox and verify your email before signing in.`;
+        setSuccessMessage(notice);
+        Alert.alert(
+          'Verification Email Sent',
+          notice,
+          [
+            {
+              text: 'Go to Sign In',
+              onPress: () => router.push('/(auth)/login'),
+            },
+          ],
+          { cancelable: false },
+        );
+      } else {
+        console.info('🎉 [RegisterScreen] Session created! Transitioning to onboarding...');
+        router.replace('/(auth)/onboarding');
+      }
     } catch (error: any) {
-      setErrorMessage(error?.message || 'Registration failed. Please try again.');
+      console.error('❌ [RegisterScreen] Registration caught error:', error);
+      console.error('❌ [RegisterScreen] Error details:', {
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        status: error?.status,
+        stack: error?.stack,
+      });
+      setErrorMessage(
+        error?.message ||
+          'Registration failed. Please check your internet connection or try another email.',
+      );
     } finally {
+      console.info('🏁 [RegisterScreen] Registration handler concluded.');
       setLoading(false);
     }
   };
@@ -164,6 +228,26 @@ export default function RegisterScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {successMessage ? (
+        <Card style={styles.successBanner}>
+          <CheckCircle2 size={24} color={colors.success} style={styles.successIcon} />
+          <View style={styles.successBody}>
+            <Text variant="bodyMd" color={colors.success} style={styles.successTitle}>
+              Verification Email Sent
+            </Text>
+            <Text variant="bodySm" color={colors.inkSoft} style={styles.successText}>
+              {successMessage}
+            </Text>
+            <Button
+              title="Go to Sign In"
+              onPress={() => router.push('/(auth)/login')}
+              variant="primary"
+              style={styles.successCta}
+            />
+          </View>
+        </Card>
+      ) : null}
 
       {errorMessage ? (
         <Card style={styles.errorBanner}>
@@ -368,6 +452,35 @@ const styles = StyleSheet.create({
   },
   roleSub: {
     marginTop: 2,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F0FDF4',
+    borderColor: colors.success,
+    borderWidth: 1,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    marginBottom: spacing.lg,
+  },
+  successIcon: {
+    marginRight: spacing.sm,
+    marginTop: 2,
+  },
+  successBody: {
+    flex: 1,
+  },
+  successTitle: {
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  successText: {
+    marginBottom: spacing.sm,
+    lineHeight: 20,
+  },
+  successCta: {
+    marginTop: spacing.xs,
+    width: '100%',
   },
   errorBanner: {
     flexDirection: 'row',

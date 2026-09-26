@@ -10,6 +10,7 @@ export default [
       'web-build/**',
       'coverage/**',
       'docs/**',
+      'supabase/**',
       '*.config.js',
       '*.config.mjs',
     ],

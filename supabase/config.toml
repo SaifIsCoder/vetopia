@@ -1,0 +1,4 @@
+project_id = "fkhsqstkkksaerpjoczi"
+
+[functions.vet-chat]
+verify_jwt = false

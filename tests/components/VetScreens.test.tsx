@@ -98,6 +98,21 @@ jest.mock('../../src/hooks/useVets', () => ({
   useVetSchedule: () => mockUseVetScheduleReturn,
 }));
 
+jest.mock('../../src/hooks/usePets', () => ({
+  usePets: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+jest.mock('../../src/hooks/useAppointments', () => ({
+  useBookAppointment: () => ({
+    mutateAsync: jest.fn(),
+    isPending: false,
+  }),
+}));
+
 describe('Veterinarian Discovery UI & Screens (MVP-03)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -239,7 +254,7 @@ describe('Veterinarian Discovery UI & Screens (MVP-03)', () => {
       expect(getByText('09:30')).toBeTruthy();
     });
 
-    test('Selecting a slot updates selection and tapping CTA respects Phase 5 boundary', () => {
+    test('Selecting a slot updates selection and tapping CTA prompts sign-in when unauthenticated', () => {
       const { getByText } = render(<VetProfileScreen />);
 
       // Slot 09:00 selected
@@ -250,11 +265,11 @@ describe('Veterinarian Discovery UI & Screens (MVP-03)', () => {
       const ctaBtn = getByText('Proceed to Booking (09:00)');
       expect(ctaBtn).toBeTruthy();
 
-      // Pressing CTA should show Phase 5 alert and NOT create appointment
+      // Pressing CTA without authentication should prompt sign-in
       fireEvent.press(ctaBtn);
       expect(Alert.alert).toHaveBeenCalledWith(
-        'Phase 5 Boundary',
-        expect.stringContaining('Phase 5 (MVP-04 Appointments)'),
+        'Sign In Required',
+        expect.stringContaining('signed in as a pet parent'),
         expect.any(Array),
       );
     });

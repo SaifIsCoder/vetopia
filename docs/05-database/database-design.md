@@ -19,8 +19,8 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 | `public.conversations` | `[EXISTING]` | Asynchronous 1-to-1 P2P messaging channels |
 | `public.conversation_participants`| `[EXISTING]` | Membership bridge for 1-to-1 conversation threads |
 | `public.direct_messages` | `[EXISTING]` | Asynchronous text messages in clinical conversation channels |
-| `public.prescriptions` | `[APPROVED FOR MVP]` | Digital prescriptions issued by vets upon consult completion |
-| `public.prescription_items`| `[APPROVED FOR MVP]` | Specific medications, dosages, and schedules on a prescription |
+| `public.prescriptions` | `[EXISTING + IMPLEMENTED MVP-06]` | Digital prescriptions issued by vets upon consult completion |
+| `public.prescription_items`| `[EXISTING + IMPLEMENTED MVP-06]` | Specific medications, dosages, and schedules on a prescription |
 | `public.notifications` | `[APPROVED FOR MVP]` | In-app user notifications inbox (read/unread) |
 | `public.device_tokens` | `[APPROVED FOR MVP]` | APNs and FCM push notification device registration |
 
@@ -108,27 +108,32 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 
 ---
 
-### 2.6 `public.appointments` `[EXISTING + APPROVED MVP EXPANSION]`
+### 2.6 `public.appointments` `[EXISTING + IMPLEMENTED MVP-04]`
 * **Columns:**
   * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
   * `vet_id` (`UUID`, NOT NULL, `REFERENCES public.vet_profiles(id) ON DELETE CASCADE`)
   * `pet_parent_id` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)
-  * `pet_id` (`UUID`, Nullable, `[APPROVED FOR MVP] REFERENCES public.pets(id) ON DELETE SET NULL`)
+  * `pet_id` (`UUID`, Nullable, `REFERENCES public.pets(id) ON DELETE SET NULL`)
   * `starts_at` (`TIMESTAMPTZ`, NOT NULL)
   * `ends_at` (`TIMESTAMPTZ`, NOT NULL)
   * `mode` (`TEXT`, NOT NULL, Default: `'video'`, `CHECK (mode IN ('chat','audio','video'))`)
   * `status` (`TEXT`, NOT NULL, Default: `'scheduled'`, `CHECK (status IN ('scheduled','completed','cancelled'))`)
-  * `pet_name` (`TEXT`, Nullable) — Preserved for web backwards compatibility
-  * `species` (`TEXT`, Nullable) — Preserved for web backwards compatibility
+  * `pet_name` (`TEXT`, Nullable) — Denormalized snapshot for consultation continuity
+  * `species` (`TEXT`, Nullable) — Denormalized snapshot
   * `breed` (`TEXT`, Nullable)
   * `pet_age` (`TEXT`, Nullable)
   * `symptoms` (`TEXT`, Nullable)
-  * `urgency` (`TEXT`, Nullable)
+  * `urgency` (`TEXT`, Nullable, `CHECK (urgency IN ('Low','Medium','High'))`)
   * `medications` (`TEXT`, Nullable)
   * `contact_phone` (`TEXT`, Nullable)
-  * `price_usd` (`NUMERIC(10,2)`, NOT NULL, Default: `0.00`) — Stored for record-keeping; upfront payment gate deferred to Phase 3
+  * `price_usd` (`NUMERIC(10,2)`, NOT NULL, Default: `0.00`) — Consultation fee record; MVP booking is not gated by upfront payment
   * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
-* **Constraints:** `UNIQUE (vet_id, starts_at)`
+  * `updated_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+* **Constraints & Indexes:**
+  * `appointments_vet_scheduled_slot_idx` (`UNIQUE INDEX ON public.appointments (vet_id, starts_at) WHERE status = 'scheduled'`) — Guarantees atomic race-condition protection against double-booking active slots, while allowing cancelled slots to be freed and re-booked.
+* **Server-Side Security RPCs:**
+  * `public.book_appointment(...)`: Atomic reservation function (`SECURITY DEFINER`, search_path set). Verifies authenticated user, enforces pet ownership (`pets.owner_id = auth.uid()`), checks vet acceptance and 15-minute advance buffer, creates appointment record with status `'scheduled'`, and raises 23505 conflict on race condition.
+  * `public.cancel_appointment(...)`: Secure cancellation function (`SECURITY DEFINER`). Verifies participant identity (`pet_parent_id = auth.uid()` or vet owner), sets status to `'cancelled'`, frees the slot index, and flags late cancellation (< 2 hours).
 
 
 ---
@@ -145,29 +150,37 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 
 ---
 
-### 2.8 `public.prescriptions` `[REQUIRED FOR MVP]`
+### 2.8 `public.prescriptions` `[EXISTING + IMPLEMENTED MVP-06]`
 * **Columns:**
   * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
-  * `appointment_id` (`UUID`, NOT NULL, `REFERENCES public.appointments(id) ON DELETE CASCADE`)
+  * `appointment_id` (`UUID`, NOT NULL, Unique, `REFERENCES public.appointments(id) ON DELETE CASCADE`)
   * `vet_id` (`UUID`, NOT NULL, `REFERENCES public.vet_profiles(id) ON DELETE CASCADE`)
   * `pet_id` (`UUID`, NOT NULL, `REFERENCES public.pets(id) ON DELETE CASCADE`)
   * `diagnosis` (`TEXT`, NOT NULL)
   * `notes` (`TEXT`, Nullable)
+  * `refills_allowed` (`INT`, NOT NULL, Default: `0`, `CHECK (refills_allowed >= 0)`)
   * `status` (`TEXT`, NOT NULL, Default: `'active'`, `CHECK (status IN ('active', 'completed', 'cancelled'))`)
   * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
   * `updated_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
-* **Indexes:** `CREATE INDEX idx_prescriptions_pet ON public.prescriptions(pet_id);`
+* **Constraints & Indexes:**
+  * `prescriptions_appointment_id_key` (`UNIQUE (appointment_id)`) — Enforces the single-prescription-per-completed-consultation policy at the database level.
+  * `idx_prescriptions_pet` (`INDEX ON public.prescriptions(pet_id)`) — Optimized for Pet Passport clinical history retrieval.
+  * `idx_prescriptions_vet` (`INDEX ON public.prescriptions(vet_id)`) — Optimized for veterinarian records.
+* **Server-Side Security RPC:**
+  * `public.create_prescription(p_appointment_id UUID, p_diagnosis TEXT, p_notes TEXT, p_refills_allowed INT, p_items JSONB)`:
+    Atomic transaction (`SECURITY DEFINER`, search_path set). Verifies caller authentication, verifies caller is registered veterinarian (`vet_profiles.user_id = auth.uid()`), verifies appointment exists, has status `'completed'`, and belongs to the consulting veterinarian (`appointment.vet_id = v_vet_id`). Resolves pet identity from the appointment record (client cannot spoof pet), inserts prescription and all line items atomically, and returns a JSON payload with `prescription_id` and `item_count`.
 
-### 2.9 `public.prescription_items` `[REQUIRED FOR MVP]`
+### 2.9 `public.prescription_items` `[EXISTING + IMPLEMENTED MVP-06]`
 * **Columns:**
   * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
   * `prescription_id` (`UUID`, NOT NULL, `REFERENCES public.prescriptions(id) ON DELETE CASCADE`)
   * `medication_name` (`TEXT`, NOT NULL)
-  * `dosage` (`TEXT`, NOT NULL) — e.g. "25mg"
-  * `frequency` (`TEXT`, NOT NULL) — e.g. "Twice daily with food"
-  * `duration_days` (`INT`, NOT NULL, Default: `7`)
-  * `instructions` (`TEXT`, Nullable)
-  * `refills_allowed` (`INT`, NOT NULL, Default: `0`)
+  * `dosage` (`TEXT`, NOT NULL) — e.g. "250mg", "1 tablet"
+  * `frequency` (`TEXT`, NOT NULL) — e.g. "Twice daily with meals"
+  * `duration` (`TEXT`, NOT NULL) — e.g. "14 days", "1 month"
+  * `special_instructions` (`TEXT`, Nullable) — e.g. "Keep refrigerated, administer with food"
+  * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+* **Indexes:** `CREATE INDEX idx_prescription_items_prescription ON public.prescription_items(prescription_id);`
 
 ---
 

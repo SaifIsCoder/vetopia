@@ -50,8 +50,111 @@ export function formatDayLabel(d: Date): string {
 }
 
 /**
+ * Convert a wall-clock date and minute (e.g. 2026-09-24 at 540m) in a specific timezone
+ * to an accurate UTC Date object.
+ */
+export function createDateInTimezone(
+  year: number,
+  monthIndex: number, // 0-11
+  day: number,
+  minutesFromMidnight: number,
+  timeZone: string = 'UTC',
+): Date {
+  const hours = Math.floor(minutesFromMidnight / 60);
+  const minutes = minutesFromMidnight % 60;
+  const approxUtc = new Date(Date.UTC(year, monthIndex, day, hours, minutes, 0, 0));
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(approxUtc);
+    let pYear = 0;
+    let pMonth = 0;
+    let pDay = 0;
+    let pHour = 0;
+    let pMinute = 0;
+
+    for (const p of parts) {
+      if (p.type === 'year') pYear = parseInt(p.value, 10);
+      if (p.type === 'month') pMonth = parseInt(p.value, 10);
+      if (p.type === 'day') pDay = parseInt(p.value, 10);
+      if (p.type === 'hour') pHour = parseInt(p.value, 10);
+      if (p.type === 'minute') pMinute = parseInt(p.value, 10);
+    }
+
+    const wallClockInTarget = Date.UTC(pYear, pMonth - 1, pDay, pHour, pMinute, 0, 0);
+    const targetWallClock = Date.UTC(year, monthIndex, day, hours, minutes, 0, 0);
+    const diff = targetWallClock - wallClockInTarget;
+
+    return new Date(approxUtc.getTime() + diff);
+  } catch {
+    return approxUtc;
+  }
+}
+
+/**
+ * Extract calendar year, month (0-indexed), day, and weekday (0=Sun..6=Sat) in a specific timezone.
+ */
+export function getDatePartsInTimezone(
+  d: Date,
+  timeZone: string = 'UTC',
+): { year: number; month: number; day: number; weekday: number } {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+    });
+
+    const parts = formatter.formatToParts(d);
+    let year = d.getUTCFullYear();
+    let month = d.getUTCMonth();
+    let day = d.getUTCDate();
+    let weekdayStr = '';
+
+    for (const part of parts) {
+      if (part.type === 'year') year = parseInt(part.value, 10);
+      if (part.type === 'month') month = parseInt(part.value, 10) - 1;
+      if (part.type === 'day') day = parseInt(part.value, 10);
+      if (part.type === 'weekday') weekdayStr = part.value;
+    }
+
+    const weekdayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+
+    const weekday = weekdayMap[weekdayStr] ?? d.getUTCDay();
+    return { year, month, day, weekday };
+  } catch {
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth(),
+      day: d.getUTCDate(),
+      weekday: d.getUTCDay(),
+    };
+  }
+}
+
+/**
  * Build bookable slots for the next `daysAhead` days from recurring weekly availability
- * minus existing booked appointments and past times.
+ * minus existing booked appointments and past times, anchored in the veterinarian's timezone.
  * Pure function to facilitate isolated unit testing (FR-VET-002).
  */
 export function buildSlots(
@@ -60,29 +163,57 @@ export function buildSlots(
   bookedISO: string[],
   daysAhead = 14,
   now: Date = new Date(),
+  vetTimezone = 'UTC',
 ): DaySchedule[] {
   const bookedTimestamps = new Set(bookedISO.map((iso) => new Date(iso).getTime()));
   const currentTimestamp = now.getTime();
   const bufferMs = 15 * 60 * 1000; // 15-minute advance buffer required by SRS
   const result: DaySchedule[] = [];
 
-  for (let i = 0; i < daysAhead; i++) {
-    const day = new Date(now);
-    day.setDate(day.getDate() + i);
-    day.setHours(0, 0, 0, 0);
+  const baseParts = getDatePartsInTimezone(now, vetTimezone);
 
-    const dayWeekday = day.getDay();
-    const matchingWindows = availability.filter((a) => a.weekday === dayWeekday);
+  for (let i = 0; i < daysAhead; i++) {
+    const dayDateInTz = new Date(Date.UTC(baseParts.year, baseParts.month, baseParts.day + i));
+    const dayParts = getDatePartsInTimezone(dayDateInTz, vetTimezone);
+
+    const matchingWindows = availability.filter((a) => a.weekday === dayParts.weekday);
     const daySlots: TimeSlot[] = [];
+
+    const dateKey = `${dayParts.year}-${String(dayParts.month + 1).padStart(2, '0')}-${String(dayParts.day).padStart(2, '0')}`;
+    const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const dayLabel = `${weekdayNames[dayParts.weekday]}, ${monthNames[dayParts.month]} ${dayParts.day}`;
 
     for (const window of matchingWindows) {
       const step = slotMinutes > 0 ? slotMinutes : 30;
       for (let m = window.start_minute; m + step <= window.end_minute; m += step) {
-        const slotStart = new Date(day);
-        slotStart.setMinutes(m);
-
-        const slotEnd = new Date(slotStart);
-        slotEnd.setMinutes(slotStart.getMinutes() + step);
+        const slotStart = createDateInTimezone(
+          dayParts.year,
+          dayParts.month,
+          dayParts.day,
+          m,
+          vetTimezone,
+        );
+        const slotEnd = createDateInTimezone(
+          dayParts.year,
+          dayParts.month,
+          dayParts.day,
+          m + step,
+          vetTimezone,
+        );
 
         // Omit slots in the past or within 15 minutes of present time
         if (slotStart.getTime() < currentTimestamp + bufferMs) {
@@ -94,11 +225,14 @@ export function buildSlots(
           continue;
         }
 
+        const hoursStr = String(Math.floor(m / 60)).padStart(2, '0');
+        const minsStr = String(m % 60).padStart(2, '0');
+
         daySlots.push({
-          date: formatDateKey(day),
+          date: dateKey,
           startTime: slotStart.toISOString(),
           endTime: slotEnd.toISOString(),
-          formattedTime: formatSlotTime(slotStart),
+          formattedTime: `${hoursStr}:${minsStr}`,
         });
       }
     }
@@ -108,8 +242,8 @@ export function buildSlots(
 
     if (daySlots.length > 0) {
       result.push({
-        date: formatDateKey(day),
-        dayLabel: formatDayLabel(day),
+        date: dateKey,
+        dayLabel,
         slots: daySlots,
       });
     }
@@ -233,8 +367,9 @@ export class VetService {
 
   /**
    * Fetch dynamically generated 14-day bookable slots for a doctor.
-   * Combines recurring `public.vet_availability` minus existing `public.appointments`.
-   * (FR-VET-002)
+   * Invokes the secure server-side schedule RPC `get_vet_schedule` (FR-VET-002),
+   * which evaluates recurring availability minus all booked appointments across all users
+   * anchored in the vet's timezone, preserving patient privacy.
    */
   public async getVetSchedule(vetId: string, daysAhead = 14): Promise<DaySchedule[]> {
     if (!vetId) {
@@ -242,19 +377,36 @@ export class VetService {
     }
 
     try {
-      const [vetRes, availRes, apptRes] = await Promise.all([
+      // 1. Primary: Secure Server-Side Postgres Schedule RPC
+      // Evaluates recurring availability minus all booked appointments across all users
+      // in the vet's timezone with elevated privileges without exposing patient data.
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_vet_schedule', {
+        target_vet_id: vetId,
+        days_ahead: daysAhead,
+      });
+
+      if (!rpcError && Array.isArray(rpcData)) {
+        return rpcData as DaySchedule[];
+      }
+
+      // If RPC returned a specific error other than missing function, rethrow
+      if (
+        rpcError &&
+        rpcError.message &&
+        !rpcError.message.includes('function') &&
+        !rpcError.message.includes('not found')
+      ) {
+        throw new ApiError(rpcError.message, 500);
+      }
+
+      // 2. Client-side fallback if RPC is not yet deployed (e.g. offline/isolated testing)
+      const [vetRes, availRes] = await Promise.all([
         supabase
           .from('vet_profiles')
-          .select('slot_minutes, accepting')
+          .select('slot_minutes, accepting, timezone')
           .eq('id', vetId)
           .maybeSingle(),
         supabase.from('vet_availability').select('*').eq('vet_id', vetId).order('weekday'),
-        supabase
-          .from('appointments')
-          .select('starts_at')
-          .eq('vet_id', vetId)
-          .eq('status', 'scheduled')
-          .gte('starts_at', new Date().toISOString()),
       ]);
 
       if (vetRes.error) {
@@ -265,15 +417,19 @@ export class VetService {
         throw new NotFoundError('Doctor not found.');
       }
 
+      if (vetRes.data.accepting === false) {
+        return [];
+      }
+
       if (availRes.error) {
         throw new ApiError(availRes.error.message, 500);
       }
 
       const slotMinutes = vetRes.data.slot_minutes || 30;
+      const vetTimezone = vetRes.data.timezone || 'UTC';
       const availability = (availRes.data || []) as VetAvailability[];
-      const bookedIso = ((apptRes.data || []) as { starts_at: string }[]).map((a) => a.starts_at);
 
-      return buildSlots(availability, slotMinutes, bookedIso, daysAhead);
+      return buildSlots(availability, slotMinutes, [], daysAhead, new Date(), vetTimezone);
     } catch (err: any) {
       if (err instanceof ApiError) throw err;
       throw new ApiError(err?.message || 'Failed to generate doctor schedule.', 500);

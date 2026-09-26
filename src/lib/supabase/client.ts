@@ -9,6 +9,8 @@ import { SecureStorageAdapter } from './storage';
 const supabaseUrl = env.supabaseUrl || 'https://placeholder.supabase.co';
 const supabaseAnonKey = env.supabaseAnonKey || 'placeholder-anon-key';
 
+console.info('🔌 [SupabaseClient] Connecting to:', supabaseUrl);
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: SecureStorageAdapter,

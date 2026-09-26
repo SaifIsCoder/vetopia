@@ -19,6 +19,7 @@ export class NetworkError extends ApiError {
   constructor(message = 'Network connection failed. Please check your internet.') {
     super(message, 0, 'NETWORK_ERROR');
     this.name = 'NetworkError';
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -26,6 +27,7 @@ export class AuthError extends ApiError {
   constructor(message = 'Authentication required. Please sign in again.') {
     super(message, 401, 'UNAUTHORIZED');
     this.name = 'AuthError';
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -33,6 +35,7 @@ export class ForbiddenError extends ApiError {
   constructor(message = 'You do not have permission to access this resource.') {
     super(message, 403, 'FORBIDDEN');
     this.name = 'ForbiddenError';
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -40,6 +43,7 @@ export class NotFoundError extends ApiError {
   constructor(message = 'Requested resource was not found.') {
     super(message, 404, 'NOT_FOUND');
     this.name = 'NotFoundError';
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -47,6 +51,15 @@ export class ValidationError extends ApiError {
   constructor(message = 'Please check the information provided.', details?: ApiErrorDetail[]) {
     super(message, 422, 'VALIDATION_ERROR', details);
     this.name = 'ValidationError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export class ConflictError extends ApiError {
+  constructor(message = 'Slot just taken. Please select another time.') {
+    super(message, 409, 'CONFLICT');
+    this.name = 'ConflictError';
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -54,6 +67,7 @@ export class ServerError extends ApiError {
   constructor(message = 'A server error occurred. Please try again later.') {
     super(message, 500, 'SERVER_ERROR');
     this.name = 'ServerError';
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 

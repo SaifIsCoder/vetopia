@@ -12,6 +12,7 @@ import {
   FileText,
   AlertCircle,
   ShieldCheck,
+  Pill,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -20,16 +21,19 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Avatar } from '../../src/components/ui/Avatar';
 import { Badge } from '../../src/components/ui/Badge';
+import { PrescriptionCard } from '../../src/components/prescriptions/PrescriptionCard';
 import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
 import { usePet, useDeletePet } from '../../src/hooks/usePets';
+import { usePetPrescriptions } from '../../src/hooks/usePrescriptions';
 
 export default function PetPassportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
   const { data: pet, isLoading, error } = usePet(id || '');
+  const { data: prescriptions, isLoading: loadingPrescriptions } = usePetPrescriptions(id || '');
   const deletePetMutation = useDeletePet();
 
   const [isDeleting, setIsDeleting] = useState(false);
@@ -215,6 +219,35 @@ export default function PetPassportScreen() {
         </Card>
       </View>
 
+      {/* Digital Prescriptions History (FR-PRES-002 / Pet Passport) */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Heading level={3} style={styles.sectionTitle}>
+            Digital Prescriptions
+          </Heading>
+          {prescriptions && prescriptions.length > 0 ? (
+            <Badge variant="completed" label={`${prescriptions.length} Active`} />
+          ) : null}
+        </View>
+
+        {loadingPrescriptions ? (
+          <ActivityIndicator
+            size="small"
+            color={colors.primaryDark}
+            style={{ marginVertical: spacing.md }}
+          />
+        ) : prescriptions && prescriptions.length > 0 ? (
+          prescriptions.map((rx) => <PrescriptionCard key={rx.id} prescription={rx} />)
+        ) : (
+          <Card style={styles.emptyPrescriptionCard}>
+            <Pill size={24} color={colors.muted} />
+            <Text variant="caption" color={colors.inkSoft} style={{ marginTop: 4 }}>
+              No digital prescriptions issued for {pet.name} yet.
+            </Text>
+          </Card>
+        )}
+      </View>
+
       {/* Passport Verification Guarantee */}
       <Card style={styles.guaranteeCard}>
         <View style={styles.guaranteeRow}>
@@ -375,5 +408,18 @@ const styles = StyleSheet.create({
   footerActions: {
     gap: spacing.sm,
     marginBottom: spacing.xl,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  emptyPrescriptionCard: {
+    padding: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderStyle: 'dashed',
+    borderColor: colors.border,
   },
 });

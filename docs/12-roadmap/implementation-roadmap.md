@@ -271,9 +271,88 @@ Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 32 static
 
 ---
 
-### 4. Next Phase
-**Phase 5 — MVP-04 Appointments & Scheduling**  
-*Scope:* Slot reservation, multi-step booking modal (`app/booking/[vetId].tsx` steps 2-4: pet selection, clinical intake notes, format selection, confirmation), appointment management and cancellation (`app/(tabs)/appointments.tsx`).
+---
+
+### 4. Phase 5 Implementation Complete — MVP-04 Appointments & Scheduling
+* **Implementation Status:** COMPLETE (Strict adherence to FR-BOOK-001 and FR-BOOK-002; zero Phase 6+ features introduced).
+* **Delivered Artifacts:**
+  * `supabase/migrations/20260925130000_appointments_booking.sql`: Added `pet_id REFERENCES public.pets(id) ON DELETE SET NULL`, `updated_at`, partial unique index `appointments_vet_scheduled_slot_idx` (`WHERE status = 'scheduled'`), atomic reservation RPC `public.book_appointment`, and cancellation RPC `public.cancel_appointment`.
+  * `src/types/appointment.ts`: Comprehensive domain types (`Appointment`, `AppointmentMode`, `AppointmentStatus`, `AppointmentUrgency`, `BookAppointmentDTO`, `BookingConfirmation`).
+  * `src/lib/appointments/appointmentService.ts`: Direct Supabase client + RPC service implementing `bookAppointment`, `getMyAppointments`, `getAppointmentById`, and `cancelAppointment`.
+  * `src/hooks/useAppointments.ts`: TanStack Query hooks with automatic cache invalidation (`useAppointments`, `useAppointment`, `useBookAppointment`, `useCancelAppointment`).
+  * `src/components/appointments/AppointmentCard.tsx`: Reusable consultation card with doctor info, patient snapshot, format badge, status pill, fee, and cancellation trigger.
+  * `app/booking/[vetId].tsx`: Multi-step booking wizard: Step 1 (Schedule & slot selection), Step 2 (Pet selection & consultation format), Step 3 (Clinical intake: symptoms, urgency, phone), Step 4 (Summary review & confirm CTA), Step 5 (Confirmed receipt with confirmation ID and navigation CTAs). HTTP 409 conflict handling displays "Slot just taken. Please select another time." and resets to Step 1.
+  * `app/(tabs)/appointments.tsx`: Consultations hub with segmented tabs (Upcoming vs. Past Consultations), cancellation modal with 2-hour policy disclosure, skeleton loading, pull-to-refresh, empty state with directory navigation CTA.
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (18 suites, 151 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 32 static routes)
+```
+
+---
+
+### 5. Phase 6 Implementation Complete — MVP-05 Telemedicine Consultations
+* **Implementation Status:** `CLOSED / COMPLETED`
+* **Execution Date:** 2026-09-25
+* **Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · LiveKit Cloud Managed RTC SFU
+* **Delivered Scope:**
+  * `supabase/migrations/20260925200000_telemedicine_completion.sql`: Implemented `public.complete_appointment` `SECURITY DEFINER` RPC with `SET search_path = public`. Strictly authorizes the assigned consulting veterinarian (`v_vet.user_id = auth.uid()`), checks `scheduled` status, and atomically marks appointment `completed`.
+  * `src/server/telemedicineTokenHandler.ts` & `src/server/server.ts`: Server-side token generator (`POST /api/v1/telemedicine/token`) using `livekit-server-sdk`. Authenticates Supabase session, verifies appointment participant ownership, enforces T-15m timing window, deterministically generates room name (`vetopia-consult-{id}`) and identity (`user_{id}`), and signs short-lived LiveKit JWT. Server secrets (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`) are never exposed to client.
+  * `src/lib/telemedicine/telemedicineService.ts`: Telemedicine service handling token request, T-15m client-side eligibility guard, and consultation completion orchestration.
+  * `src/lib/appointments/appointmentService.ts` & `src/hooks/useAppointments.ts`: Added `completeAppointment` RPC caller and `useCompleteAppointment` mutation with automatic React Query cache invalidation.
+  * `src/components/telemedicine/CallControls.tsx`: Hardware control dock for microphone mute, camera privacy toggle, camera flip, speakerphone toggle, and red end-call button.
+  * `src/components/telemedicine/WaitingRoomView.tsx` (`FR-TELE-001`): Waiting room with doctor details, pet info, scheduled time, local camera preview, device check, waiting status banner ("Waiting for Doctor to admit you..." / "Patient is in the Waiting Room"), and "Enter Consultation Room" CTA.
+  * `src/components/telemedicine/ActiveCallView.tsx` (`FR-TELE-002`): Fullscreen remote participant view, floating local PiP window, live duration timer, encryption badge, and 20-second automatic reconnection overlay with retry CTA.
+  * `app/consult/[id].tsx`: Composed consultation screen managing lifecycle states (loading, ineligible/expired, waiting_room, connecting, connected, ended), native camera/mic permission handling, and role-differentiated exit flows (Vet: End & Mark Completed; Pet Parent: Leave Room without completion).
+  * `src/components/appointments/AppointmentCard.tsx`: Integrated "Enter Room" CTA for scheduled appointments routing to `/consult/[id]`.
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (21 suites, 187 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 32 static routes)
+```
+
+---
+
+### 6. Phase 7 Implementation Complete — MVP-06 Digital Prescriptions
+* **Implementation Status:** `CLOSED / COMPLETED`
+* **Execution Date:** 2026-09-26
+* **Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · `expo-print` · `expo-sharing` · Supabase Auth / PostgreSQL RLS
+* **Delivered Scope:**
+  * `supabase/migrations/20260926120000_prescriptions_schema.sql`: Implemented `public.prescriptions` and `public.prescription_items` tables with `UNIQUE (appointment_id)` constraint, clinical foreign keys, RLS policies (pet owner, authoring vet, admin select; client direct writes revoked), and `public.create_prescription` `SECURITY DEFINER` RPC.
+  * `src/types/prescription.ts`: Comprehensive domain types (`Prescription`, `PrescriptionItem`, `CreatePrescriptionDTO`, `CreatePrescriptionItemDTO`, `CreatePrescriptionResponse`).
+  * `src/lib/prescriptions/prescriptionService.ts`: Direct Supabase client + RPC service implementing `createPrescription`, `getPrescriptionById`, `getPrescriptionsByPetId`, and `getPrescriptionByAppointmentId`.
+  * `src/hooks/usePrescriptions.ts`: TanStack Query hooks with automatic cache invalidation (`usePrescription`, `useAppointmentPrescription`, `usePetPrescriptions`, `useCreatePrescription`).
+  * `src/lib/prescriptions/prescriptionPdf.ts`: Authoritative HTML generator and PDF export pipeline via `expo-print` and `expo-sharing` featuring Vetopia branding, patient snapshot, prescribing veterinarian verification, structured medication table, refills, electronic signature, and clinical disclaimer.
+  * `src/components/prescriptions/`:
+    * `MedicationItemRow.tsx`: Line item row displaying drug name, dosage badge, schedule, duration, instructions, and remove action.
+    * `MedicationFormModal.tsx`: Modal form for adding/editing medication items with validation and key-based unmount lifecycle.
+    * `PrescriptionCard.tsx`: Reusable summary card with status badge, doctor name, medication counter, refill count, and details navigation.
+  * `app/consult/[id]/prescription.tsx` (`SCR-PRES-001` / `FR-PRES-001`): Authoritative doctor prescription authoring screen with completed appointment precondition guard, consultation context card, diagnosis input, notes, refills stepper, dynamic medication list, and single-prescription mutation handling.
+  * `app/prescriptions/[id].tsx` (`SCR-PRES-002` / `FR-PRES-002`): Structured prescription detail screen with PDF export trigger, doctor credential card, patient biometrics card, medication regimen, and digital signature representation.
+  * **Integration Points:**
+    * `src/components/appointments/AppointmentCard.tsx`: Completed consultations display "Create Prescription" (for consulting doctor when no prescription issued) or "View Prescription" (when prescription exists).
+    * `app/consult/[id].tsx`: Concluding consultation alert offers veterinarian immediate "Create Prescription" navigation.
+    * `app/pets/[id].tsx`: Pet Health Passport displays active digital prescriptions with count badge and `PrescriptionCard` list.
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (23 suites, 222 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 33 static routes)
+```
+
+---
+
+### 7. Next Phase
+**Phase 8 — MVP-07 Direct Messaging**  
+*Scope:* Asynchronous 1-to-1 P2P messaging channels, conversation threads between pet parents and veterinarians, unread counters, Supabase Realtime channel subscriptions, and offline message queue (`SCR-TAB-004`, `SCR-MSG-001`, `FR-MSG-001`). Push notifications infrastructure and AI triage remain deferred.
 
 
 
