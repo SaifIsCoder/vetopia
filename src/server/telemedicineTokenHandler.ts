@@ -1,6 +1,32 @@
 import { AccessToken } from 'livekit-server-sdk';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { supabase as defaultSupabase } from '../lib/supabase/client';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+
+const getEnv = (key: string, fallback: string): string => {
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key]!;
+  }
+  return fallback;
+};
+
+const serverSupabaseUrl = getEnv(
+  'EXPO_PUBLIC_SUPABASE_URL',
+  'https://fkhsqstkkksaerpjoczi.supabase.co',
+);
+const serverSupabaseAnonKey = getEnv(
+  'EXPO_PUBLIC_SUPABASE_ANON_KEY',
+  'sb_publishable_82bHaIpBP9cTL2efnWLldA_ilGDcx83',
+);
+
+export const defaultSupabase: SupabaseClient = createClient(
+  serverSupabaseUrl,
+  serverSupabaseAnonKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  },
+);
 
 export interface LivekitServerConfig {
   apiKey?: string;

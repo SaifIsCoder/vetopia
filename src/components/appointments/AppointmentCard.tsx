@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Calendar, Clock, Video, Phone, MessageSquare, Pill, FilePlus } from 'lucide-react-native';
@@ -12,6 +12,7 @@ import { spacing } from '../../theme/spacing';
 import { radii } from '../../theme/radii';
 import { useAuthStore } from '../../store/authStore';
 import { useAppointmentPrescription } from '../../hooks/usePrescriptions';
+import { messageService } from '../../lib/messages/messageService';
 
 export interface AppointmentCardProps {
   appointment: Appointment;
@@ -68,6 +69,21 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   const isCompleted = appointment.status === 'completed';
 
   const { data: prescription } = useAppointmentPrescription(isCompleted ? appointment.id : '');
+  const [isOpeningChat, setIsOpeningChat] = useState(false);
+
+  const handleOpenChat = async () => {
+    setIsOpeningChat(true);
+    try {
+      const res = await messageService.getOrCreateAppointmentConversation(appointment.id);
+      if (res && res.id) {
+        router.push(`/messages/${res.id}`);
+      }
+    } catch (err) {
+      console.warn('Could not open conversation:', err);
+    } finally {
+      setIsOpeningChat(false);
+    }
+  };
 
   return (
     <Card style={styles.card}>
@@ -174,6 +190,19 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           <View style={styles.actionsBox}>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={`Chat with ${vetName}`}
+              onPress={handleOpenChat}
+              disabled={isOpeningChat}
+              style={({ pressed }) => [styles.chatBtn, pressed && styles.pressed]}
+            >
+              <MessageSquare size={13} color={colors.ink} />
+              <Text variant="caption" color={colors.ink} style={styles.chatBtnText}>
+                {isOpeningChat ? 'Opening...' : 'Chat'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel={`Enter consultation room with ${vetName}`}
               onPress={() => router.push(`/consult/${appointment.id}`)}
               style={({ pressed }) => [styles.enterBtn, pressed && styles.pressed]}
@@ -200,7 +229,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
         </View>
       ) : null}
 
-      {/* Action Footer for Completed appointments (Phase 7 Prescription Integration) */}
+      {/* Action Footer for Completed appointments (Phase 7 Prescription Integration & Clinical Chat) */}
       {isCompleted ? (
         <View style={styles.footerRow}>
           <View style={styles.priceBox}>
@@ -213,6 +242,19 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           </View>
 
           <View style={styles.actionsBox}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Chat regarding consultation with ${vetName}`}
+              onPress={handleOpenChat}
+              disabled={isOpeningChat}
+              style={({ pressed }) => [styles.chatBtn, pressed && styles.pressed]}
+            >
+              <MessageSquare size={13} color={colors.ink} />
+              <Text variant="caption" color={colors.ink} style={styles.chatBtnText}>
+                {isOpeningChat ? 'Opening...' : 'Chat'}
+              </Text>
+            </Pressable>
+
             {prescription ? (
               <Pressable
                 accessibilityRole="button"
@@ -379,6 +421,21 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   createRxBtnText: {
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  chatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surface,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatBtnText: {
     fontWeight: '700',
     fontSize: 11,
   },

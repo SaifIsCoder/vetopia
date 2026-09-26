@@ -1,10 +1,13 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Home, Stethoscope, Calendar, MessageCircle, PawPrint } from 'lucide-react-native';
+import { useUnreadMessageCount } from '../../src/hooks/useMessages';
 import { colors } from '../../src/theme/colors';
 import { typography } from '../../src/theme/typography';
 
 export default function TabLayout() {
+  const { data: unreadCount = 0 } = useUnreadMessageCount();
+
   return (
     <Tabs
       screenOptions={{
@@ -55,6 +58,13 @@ export default function TabLayout() {
         options={{
           title: 'Messages',
           tabBarLabel: 'Messages',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.primaryDark,
+            color: colors.ink,
+            fontSize: 10,
+            fontWeight: '700',
+          },
           tabBarIcon: ({ color, size }) => <MessageCircle size={size} color={color} />,
         }}
       />

@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "jest",
+    "server": "tsx --env-file=.env src/server/server.ts",
     "db:push": "supabase db push",
     "db:link": "supabase link --project-ref fkhsqstkkksaerpjoczi"
   },
@@ -45,6 +46,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@react-native/jest-preset": "^0.86.3",
     "@testing-library/react-native": "^13.3.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
@@ -60,6 +62,7 @@
     "livekit-server-sdk": "^2.19.1",
     "prettier": "^3.5.3",
     "react-test-renderer": "19.2.3",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "private": true

@@ -409,3 +409,139 @@ This document specifies all REST API endpoints required for the **Vetopia Mobile
 * **Response:** Server-Sent Events (`text/event-stream`) streaming Markdown tokens, concluding with `[DONE]`.
 * **Upstream Service:** Google Gemini 2.5 Flash with clinical safety instructions.
 * **Related Screen:** `AIChatbotScreen` (`SCR-AI-001`).
+
+---
+
+## 7. Clinical Messaging Module (`/messages`, RPCs, and Realtime) `[IMPLEMENTED MVP-07]`
+
+### `API-MSG-001`: Get or Create Appointment Conversation
+* **Method & Path:** `rpc('get_or_create_appointment_conversation', { p_appointment_id })`
+* **Purpose:** Idempotently initiate or fetch a 1-to-1 clinical conversation between pet parent and consulting veterinarian for an appointment.
+* **Authentication:** Bearer JWT (`pet_parent` or `vet` participant of the specified appointment).
+* **RPC Parameters:**
+  ```json
+  {
+    "p_appointment_id": "c8b4b72e-84b2-4d2a-89a7-9f4482ad5b92"
+  }
+  ```
+* **Response (200 OK):**
+  ```json
+  {
+    "id": "conv-uuid",
+    "created_at": "2026-09-26T18:00:00Z",
+    "last_message_at": "2026-09-26T18:00:00Z",
+    "appointment_id": "c8b4b72e-84b2-4d2a-89a7-9f4482ad5b92"
+  }
+  ```
+* **Security & Invariants:**
+  - Verifies `auth.uid() IS NOT NULL` (Error: `28000`).
+  - Ensures caller is strictly the appointment's pet parent or assigned vet (Error: `42501`).
+  - Prevents duplicate conversation records through unique partial index on `appointment_id`.
+* **Related Screen:** `MessageThreadScreen` (`app/messages/[id].tsx`), `AppointmentCard` (`src/components/appointments/AppointmentCard.tsx`).
+
+---
+
+### `API-MSG-002`: Send Direct Message
+* **Method & Path:** `rpc('send_direct_message', { p_conversation_id, p_body })`
+* **Purpose:** Send a validated text message (max 4,000 characters) in a 1-to-1 clinical conversation.
+* **Authentication:** Bearer JWT (verified conversation member).
+* **RPC Parameters:**
+  ```json
+  {
+    "p_conversation_id": "conv-uuid",
+    "p_body": "Hello Doctor, Luna is recovering well after taking the medication."
+  }
+  ```
+* **Response (200 OK):**
+  ```json
+  {
+    "id": "msg-uuid",
+    "conversation_id": "conv-uuid",
+    "sender_id": "user-uuid",
+    "body": "Hello Doctor, Luna is recovering well after taking the medication.",
+    "status": "sent",
+    "created_at": "2026-09-26T18:05:00Z"
+  }
+  ```
+* **Security & Invariants:**
+  - `sender_id` is assigned strictly from `auth.uid()` server-side (spoofing impossible).
+  - Character limit: `1 <= length(trim(p_body)) <= 4000` (Error: `22023`).
+  - Caller must be an active participant in `conversation_participants` (Error: `42501`).
+  - Atomically updates `conversations.last_message_at = now()` and sender's `last_read_at = now()`.
+* **Related Screen:** `MessageComposer` (`src/components/messages/MessageComposer.tsx`).
+
+---
+
+### `API-MSG-003`: List User Conversations
+* **Method & Path:** `rpc('get_user_conversations')`
+* **Purpose:** Retrieve all clinical conversations for the authenticated user, enriched with counterpart details, pet snapshot, last message, and unread counts.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):**
+  ```json
+  [
+    {
+      "id": "conv-uuid",
+      "appointment_id": "appt-uuid",
+      "created_at": "2026-09-26T18:00:00Z",
+      "last_message_at": "2026-09-26T18:05:00Z",
+      "counterpart": {
+        "id": "user-vet-uuid",
+        "name": "Dr. Sarah Mitchell",
+        "avatar_url": null,
+        "role": "vet"
+      },
+      "appointment_context": {
+        "id": "appt-uuid",
+        "pet_name": "Buddy",
+        "pet_species": "Dog",
+        "scheduled_at": "2026-09-26T15:00:00Z",
+        "status": "completed"
+      },
+      "last_message": {
+        "id": "msg-uuid",
+        "body": "Hello Doctor, Luna is recovering well.",
+        "created_at": "2026-09-26T18:05:00Z",
+        "sender_id": "user-uuid"
+      },
+      "unread_count": 0
+    }
+  ]
+  ```
+* **Related Screen:** `MessagesTabScreen` (`SCR-TAB-004` / `app/(tabs)/messages.tsx`).
+
+---
+
+### `API-MSG-004`: Retrieve Thread Messages
+* **Method & Path:** Supabase SELECT `public.direct_messages`
+* **Filter:** `conversation_id = :id`, ordered by `created_at ASC`
+* **Purpose:** Retrieve full chronological message history for a conversation.
+* **Authentication:** Bearer JWT (enforced by RLS `is_conversation_member(conversation_id, auth.uid())`).
+* **Related Screen:** `MessageThreadScreen` (`SCR-MSG-001` / `app/messages/[id].tsx`).
+
+---
+
+### `API-MSG-005`: Mark Conversation Read
+* **Method & Path:** `rpc('mark_conversation_read', { p_conversation_id })`
+* **Purpose:** Update the authenticated participant's `last_read_at` to the current timestamp.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):** `true`
+* **Related Screen:** `MessageThreadScreen` (`app/messages/[id].tsx`).
+
+---
+
+### `API-MSG-006`: Total Unread Message Count
+* **Method & Path:** `rpc('get_unread_message_count')`
+* **Purpose:** Fetch aggregated count of unread incoming messages across all conversations for tab badge rendering.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):** integer (e.g. `2`)
+* **Related Screen:** `TabLayout` (`app/(tabs)/_layout.tsx`).
+
+---
+
+### `API-MSG-007`: Realtime Direct Message Channel
+* **Protocol:** Supabase Realtime WebSocket (`postgres_changes`)
+* **Channel Name:** `messages:{conversation_id}`
+* **Event:** `INSERT` on schema `public`, table `direct_messages`, filter `conversation_id=eq.{id}`
+* **Payload:** Newly inserted `DirectMessage` row.
+* **Client Handling:** Deduplication via message `id`, chronological insertion into React Query cache, auto-scrolling to bottom.
+

@@ -281,3 +281,42 @@ This document specifies every screen included in the **Vetopia Mobile MVP**. All
   * Bottom Composer: Text input and send button.
 * **API Dependencies:** `POST /api/v1/ai/triage-chat` (SSE Streaming).
 * **Related Requirements:** `FR-AI-001`.
+
+---
+
+## 7. Clinical Messaging Module
+
+### Screen `SCR-TAB-004`: Messages Inbox Screen
+* **File Path:** `mobile/app/(tabs)/messages.tsx`
+* **Purpose:** Central inbox displaying all active 1-to-1 clinical conversations with veterinarians or pet parents, featuring counterpart info, patient context, latest message snippet, relative timestamp, and unread badges.
+* **Allowed Roles:** Authenticated Pet Parents and Veterinarians.
+* **Entry Points:** Messages tab in bottom tab navigation (`app/(tabs)/_layout.tsx`).
+* **Exit Points:** `SCR-MSG-001` (`/messages/[id]`), `/vets` directory (via empty state CTA for pet parents), `/(tabs)/appointments` (for veterinarians).
+* **UI Structure:**
+  * Header: Title "Messages", descriptive subtitle, total unread badge pill, pull-to-refresh control.
+  * Conversation List: `FlatList` of `ConversationCard` components sorted by latest activity (`last_message_at DESC`).
+  * Conversation Card: Counterpart name & avatar/initials, role pill (`Vet` / `Pet Parent`), clinical patient tag (`Pet Name • Species`), truncated last message preview, relative timestamp, and unread count badge.
+  * Empty State: Role-aware empty placeholder with friendly icon and targeted action button (Pet parent: "Browse Vets"; Vet: "View Appointments").
+  * Loading / Error States: Activity indicator while fetching, inline `ErrorCard` with "Try Again" retry button.
+* **API / Database Dependencies:** `public.get_user_conversations` RPC, `public.get_unread_message_count` RPC.
+* **Related Requirements:** `FR-MSG-001`.
+
+---
+
+### Screen `SCR-MSG-001`: Clinical Message Thread Screen
+* **File Path:** `mobile/app/messages/[id].tsx`
+* **Purpose:** Dedicated 1-to-1 clinical messaging view between pet parent and consulting veterinarian with real-time Supabase message synchronization and clinical appointment context.
+* **Allowed Roles:** Authenticated participants of the conversation.
+* **Entry Points:** `SCR-TAB-004` (conversation tap), `AppointmentCard` ("Chat" button).
+* **Exit Points:** Back navigation button (returns to previous screen or `/messages`).
+* **UI Structure:**
+  * Header Bar: Back button, counterpart name, clinical role subtitle, and appointment context label.
+  * Appointment Context Banner: Top banner showing pet name, species, consultation date/time, and status pill badge.
+  * Message Thread: Chronological `FlatList` of `MessageBubble` items with automatic scroll-to-bottom.
+  * Message Bubble: Visually distinct alignment and styling (Current user: primary lime brand bubble, right-aligned; Counterpart: neutral dark card bubble, left-aligned), formatted timestamp, and sent status indicator.
+  * Message Composer: Auto-expanding multiline text input, character counter display when approaching 4,000-character limit, send button with pending mutation spinner, and empty/whitespace rejection.
+  * Realtime Delivery: Supabase Realtime channel subscription (`postgres_changes` on `direct_messages`), optimistic caching, message deduplication, and automatic `mark_conversation_read` dispatch.
+  * States: Initial loading spinner, empty conversation welcome state ("No messages yet. Send a message to start the consultation follow-up."), unauthorized conversation error view.
+* **API / Database Dependencies:** `public.send_direct_message` RPC, `public.mark_conversation_read` RPC, `public.direct_messages` table, Supabase Realtime channel.
+* **Related Requirements:** `FR-MSG-001`.
+

@@ -13,37 +13,41 @@ This document specifies the real-time asynchronous messaging architecture for **
                                    │                │
             ┌──────────────────────▼──────┐  ┌──────▼─────────────────────┐
             │   CLINICAL MESSAGING        │  │   TELEMEDICINE CONSULTATION │
-            │   (Asynchronous Text Inbox) │  │   (Live WebRTC Video/Audio) │
+            │   (Asynchronous Text Inbox) │  │   (LiveKit Cloud Managed SFU) │
             ├─────────────────────────────┤  ├─────────────────────────────┤
-            │ • 1-to-1 Parent <-> Doctor  │  │ • P2P Real-Time Video/Audio │
-            │ • conversations table       │  │ • call_signals table        │
-            │ • direct_messages table     │  │ • Ephemeral session         │
+            │ • 1-to-1 Parent <-> Doctor  │  │ • P2P / SFU Video & Audio   │
+            │ • conversations table       │  │ • LiveKit JWT Room Token    │
+            │ • direct_messages table     │  │ • Ephemeral consult room    │
             │ • Persistent post-consult   │  │ • Terminates when call ends │
             └─────────────────────────────┘  └─────────────────────────────┘
 ```
 
-**Technical Invariant:** Live WebRTC calling and asynchronous clinical messaging are distinct subsystems. Video/audio never flows through messaging channels, and messaging threads persist after consultation conclusion for clinical follow-up.
+**Technical Invariant:** Telemedicine video/audio and asynchronous clinical messaging are distinct subsystems. Video/audio flows exclusively through encrypted LiveKit SFU channels and is never stored in PostgreSQL. Clinical messaging threads persist after consultation conclusion for longitudinal clinical follow-up.
 
 ---
 
-## 2. Conversation Data Model
+## 2. Conversation Data Model `[IMPLEMENTED MVP-07]`
 
 * **`conversations`:** Channel anchor table representing a clinical dialogue.
   * `id`: UUID (Primary Key)
+  * `appointment_id`: UUID (FK `public.appointments.id`, nullable for unlinked threads; unique index `idx_conversations_appointment` prevents duplicates per appointment)
   * `kind`: `'general'` or `'marketplace'` (MVP restricts usage to clinical consultation context)
   * `subject`: Description or appointment summary (e.g., "Consultation: Dr. Mitchell & Buddy")
-  * `created_by`: UUID (Parent or Doctor user ID)
-  * `last_message_at`: TIMESTAMPTZ (Updated on every new message via database trigger)
+  * `created_by`: UUID (Parent or Doctor user ID, nullable)
+  * `last_message_at`: TIMESTAMPTZ (Updated on every new message via RPC or trigger)
+  * `created_at`: TIMESTAMPTZ
 * **`conversation_participants`:** Membership mapping (exactly 2 participants in MVP).
   * `conversation_id`: UUID (FK `conversations.id`)
   * `user_id`: UUID (FK `auth.users.id`)
   * `side`: `'member'` | `'vet'`
   * `last_read_at`: TIMESTAMPTZ (Tracks read/unread message boundaries)
+  * `created_at`: TIMESTAMPTZ
+  * Primary Key: `(conversation_id, user_id)`
 * **`direct_messages`:** Immutable text messages.
   * `id`: UUID (Primary Key)
   * `conversation_id`: UUID (FK `conversations.id`)
   * `sender_id`: UUID (FK `auth.users.id`)
-  * `body`: TEXT (Length 1–4000 characters)
+  * `body`: TEXT (Length 1–4,000 characters)
   * `created_at`: TIMESTAMPTZ
 
 ---
@@ -53,23 +57,26 @@ This document specifies the real-time asynchronous messaging architecture for **
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Sender as Pet Parent (App)
-    participant API as Express API
-    participant DB as PostgreSQL (Supabase)
-    participant Channel as Realtime Channel (WSS)
-    actor Recipient as Veterinarian (App)
+    actor Sender as Pet Parent / Vet (App)
+    participant Client as messageService
+    participant DB as PostgreSQL (Supabase RPC)
+    participant Channel as Supabase Realtime (WSS)
+    actor Recipient as Counterpart (App)
 
-    Sender->>API: POST /api/v1/conversations/:id/messages { body: "Buddy ate his food today" }
-    API->>DB: INSERT INTO direct_messages (conversation_id, sender_id, body)
-    DB->>DB: Trigger: UPDATE conversations SET last_message_at = NOW()
+    Sender->>Client: Send message ("Buddy ate his food today")
+    Client->>DB: rpc('send_direct_message', { p_conversation_id, p_body })
+    DB->>DB: Verify membership & sender = auth.uid()
+    DB->>DB: INSERT INTO direct_messages
+    DB->>DB: UPDATE conversations SET last_message_at = NOW()
+    DB->>DB: UPDATE conversation_participants SET last_read_at = NOW() WHERE user_id = auth.uid()
     DB-->>Channel: Postgres Change Event (INSERT on direct_messages)
-    Channel-->>Recipient: WebSocket Event (Message Payload)
+    Channel-->>Recipient: Supabase Realtime Channel (messages:{id})
     
     alt Recipient App in Foreground
-        Recipient->>Recipient: Render message bubble immediately
-        Recipient->>API: POST /api/v1/conversations/:id/read
+        Recipient->>Recipient: Render message bubble immediately (deduplicated)
+        Recipient->>DB: rpc('mark_conversation_read', { p_conversation_id })
     else Recipient App in Background / Closed
-        API->>Recipient: Dispatched Expo Push Notification ("New message from Sarah Jenkins")
+        Note over Recipient: Push notification delivery belongs to MVP-08 (Phase 9)
     end
 ```
 
@@ -80,15 +87,16 @@ sequenceDiagram
 * An unread message is defined as any message where:
   `direct_messages.sender_id != auth.uid() AND direct_messages.created_at > conversation_participants.last_read_at`
 * When a user opens `MessageThreadScreen`, the client dispatches:
-  `POST /api/v1/conversations/:id/read`
-  which updates `conversation_participants.last_read_at = NOW()`.
-* The inbox unread counter badge across the bottom tab bar updates in real-time.
+  `messageService.markConversationRead(conversationId)`
+  which invokes `rpc('mark_conversation_read', { p_conversation_id })` to update `last_read_at = NOW()`.
+* The inbox unread counter badge across the bottom tab bar (`SCR-TAB-004`) queries `rpc('get_unread_message_count')` and refreshes on new message events.
 
 ---
 
-## 5. Offline Queuing & Retry Mechanism
+## 5. Offline Queuing & Optimistic UI Mechanism
 
-1. If a message is sent while the mobile device is offline, the client generates a temporary local message record with `status: 'sending'`.
-2. The message is queued in an in-memory queue backed by `MMKV`.
-3. Upon network reconnection (`NetInfo` event `isConnected == true`), the client flushes queued messages in chronological order.
-4. If a message fails after 3 retries (e.g., server rejection), status updates to `'failed'` with a tap-to-retry prompt.
+1. While a message mutation is inflight, the composer displays sending state and prevents duplicate submissions.
+2. The client optimistically places the message in the conversation thread.
+3. If an error occurs (network failure or database rejection), the sending state is released and a clear error notification is rendered.
+4. On realtime channel reconnect or pull-to-refresh, messages are merged and sorted chronologically without duplicates.
+

@@ -350,9 +350,45 @@ Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 33 static
 
 ---
 
-### 7. Next Phase
-**Phase 8 — MVP-07 Direct Messaging**  
-*Scope:* Asynchronous 1-to-1 P2P messaging channels, conversation threads between pet parents and veterinarians, unread counters, Supabase Realtime channel subscriptions, and offline message queue (`SCR-TAB-004`, `SCR-MSG-001`, `FR-MSG-001`). Push notifications infrastructure and AI triage remain deferred.
+---
+
+### 7. Phase 8 Implementation Complete — MVP-07 Clinical Messaging
+* **Implementation Status:** `CLOSED / COMPLETED`
+* **Execution Date:** 2026-09-26
+* **Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · Supabase Realtime · Supabase Auth / PostgreSQL RLS
+* **Delivered Scope:**
+  * `supabase/migrations/20260926180000_clinical_messaging_schema.sql`:
+    * Added `appointment_id` foreign key with unique partial index `idx_conversations_appointment` on `public.conversations`.
+    * Tightened RLS on `conversations`, `conversation_participants`, and `direct_messages` to verified participants via `public.is_conversation_member`.
+    * Implemented `SECURITY DEFINER` RPCs: `get_or_create_appointment_conversation`, `send_direct_message`, `mark_conversation_read`, `get_user_conversations`, `get_unread_message_count`.
+    * Implemented atomic `last_message_at` and `last_read_at` timestamp synchronization.
+  * `src/types/message.ts`: Comprehensive domain types (`Conversation`, `ConversationParticipant`, `DirectMessage`, `ConversationSummary`, `SendMessageDTO`, `AppointmentContextSummary`).
+  * `src/lib/messages/messageService.ts`: Direct Supabase client + RPC service implementing conversation creation/retrieval, message sending with server-side sender isolation and length checks (1..4,000 chars), read marking, and Supabase Realtime channel subscriptions (`messages:{id}`).
+  * `src/hooks/useMessages.ts`: TanStack Query hooks with automatic cache invalidation (`useConversations`, `useConversation`, `useMessages`, `useSendMessage`, `useMarkConversationRead`, `useGetOrCreateAppointmentConversation`, `useUnreadMessageCount`).
+  * `src/components/messages/`:
+    * `ConversationCard.tsx`: Inbox conversation card with counterpart info, patient tag, truncated last message preview, relative timestamp, and unread count badge.
+    * `MessageBubble.tsx`: Styled message bubble with primary lime background for current user (right) and card background for counterpart (left), formatted timestamp, and sent status indicator.
+    * `MessageComposer.tsx`: Auto-expanding multiline text input, character counter warning (>3500 chars, max 4000), submit button with pending mutation spinner, and empty/whitespace rejection.
+    * `AppointmentContextBanner.tsx`: Clinical context header displaying patient details, appointment date/time, and status pill.
+  * `app/(tabs)/messages.tsx` (`SCR-TAB-004` / `FR-MSG-001`): Messages inbox screen with unread badge pill, pull-to-refresh, skeleton loading, error retry card, role-aware empty state with navigation CTAs, and sorted conversation list.
+  * `app/messages/[id].tsx` (`SCR-MSG-001` / `FR-MSG-001`): 1-to-1 clinical message thread screen with appointment context banner, chronological message list, realtime WebSocket subscription with deduplication, auto-scroll to bottom, and message composer.
+  * `app/(tabs)/_layout.tsx`: Added dynamic unread message count badge to the Messages tab bar icon using `useUnreadMessageCount()`.
+  * `src/components/appointments/AppointmentCard.tsx`: Added "Chat" button navigating to the appointment's 1-to-1 conversation thread.
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (25 suites, 252 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 33 static routes)
+```
+
+---
+
+### 8. Next Phase
+**Phase 9 — MVP-08 Push & In-App Notifications**  
+*Scope:* Remote push notifications infrastructure (Expo Push Notifications / FCM / APNs integration), notification token registration (`public.device_tokens`), in-app notification center (`public.notifications`), appointment reminders (T-24h, T-1h, T-15m), and clinical message arrival alerts.
+
 
 
 

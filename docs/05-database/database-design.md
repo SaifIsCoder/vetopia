@@ -16,9 +16,9 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 | `public.appointments` | `[EXISTING]` | Central consultation booking transactions |
 | `public.messages` | `[EXISTING]` | Chat messages exchanged during live consultation room |
 | `public.call_signals` | `[EXISTING]` | Ephemeral WebRTC signaling (offer, answer, ICE, hangup) |
-| `public.conversations` | `[EXISTING]` | Asynchronous 1-to-1 P2P messaging channels |
-| `public.conversation_participants`| `[EXISTING]` | Membership bridge for 1-to-1 conversation threads |
-| `public.direct_messages` | `[EXISTING]` | Asynchronous text messages in clinical conversation channels |
+| `public.conversations` | `[EXISTING + IMPLEMENTED MVP-07]` | Asynchronous 1-to-1 clinical messaging channels |
+| `public.conversation_participants`| `[EXISTING + IMPLEMENTED MVP-07]` | Membership bridge for 1-to-1 conversation threads |
+| `public.direct_messages` | `[EXISTING + IMPLEMENTED MVP-07]` | Asynchronous text messages in clinical conversation channels |
 | `public.prescriptions` | `[EXISTING + IMPLEMENTED MVP-06]` | Digital prescriptions issued by vets upon consult completion |
 | `public.prescription_items`| `[EXISTING + IMPLEMENTED MVP-06]` | Specific medications, dosages, and schedules on a prescription |
 | `public.notifications` | `[APPROVED FOR MVP]` | In-app user notifications inbox (read/unread) |
@@ -184,7 +184,54 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 
 ---
 
-### 2.10 `public.notifications` `[REQUIRED FOR MVP]`
+### 2.10 `public.conversations` `[EXISTING + IMPLEMENTED MVP-07]`
+* **Columns:**
+  * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
+  * `kind` (`public.conversation_kind`, NOT NULL, Default: `'general'`)
+  * `subject` (`TEXT`, NOT NULL)
+  * `appointment_id` (`UUID`, Nullable, `REFERENCES public.appointments(id) ON DELETE SET NULL`)
+  * `open_to_join` (`BOOLEAN`, NOT NULL, Default: `FALSE`) — Strictly locked down for clinical channels
+  * `created_by` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)
+  * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+  * `last_message_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+* **Constraints & Indexes:**
+  * `idx_conversations_appointment` (`UNIQUE INDEX ON public.conversations (appointment_id) WHERE appointment_id IS NOT NULL`) — Guarantees exactly one 1-to-1 conversation per clinical consultation.
+* **Server-Side Security RPCs:**
+  * `public.get_or_create_appointment_conversation(p_appointment_id UUID)`: Atomic creation function (`SECURITY DEFINER`, search_path set). Verifies caller authentication and appointment participant authorization (`pet_parent_id = auth.uid()` or assigned vet), retrieves or atomically creates the conversation record with `open_to_join = false`, adds both participants, and returns metadata.
+  * `public.get_user_conversations()`: Retrieves all conversations for the authenticated user with counterpart profiles, unread message count, latest message snippet, and appointment context.
+  * `public.get_unread_message_count()`: Returns total unread messages count for current user across all conversations for tab badge synchronization.
+
+### 2.11 `public.conversation_participants` `[EXISTING + IMPLEMENTED MVP-07]`
+* **Columns:**
+  * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
+  * `conversation_id` (`UUID`, NOT NULL, `REFERENCES public.conversations(id) ON DELETE CASCADE`)
+  * `user_id` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)
+  * `side` (`public.participant_side`, NOT NULL, Default: `'member'`) — `'member'` for pet parents, `'vet'` for doctors
+  * `last_read_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`) — Boundary marker for calculating unread messages
+  * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+* **Constraints & Indexes:**
+  * `UNIQUE (conversation_id, user_id)` — Guarantees single participation per channel.
+  * `idx_conversation_participants_lookup` (`INDEX ON public.conversation_participants(conversation_id, user_id)`)
+  * `idx_conversation_participants_user_read` (`INDEX ON public.conversation_participants(user_id, last_read_at)`)
+* **Server-Side Security RPC:**
+  * `public.mark_conversation_read(p_conversation_id UUID)`: Advances authenticated caller's `last_read_at` timestamp to `now()`.
+
+### 2.12 `public.direct_messages` `[EXISTING + IMPLEMENTED MVP-07]`
+* **Columns:**
+  * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
+  * `conversation_id` (`UUID`, NOT NULL, `REFERENCES public.conversations(id) ON DELETE CASCADE`)
+  * `sender_id` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)
+  * `body` (`TEXT`, NOT NULL, `CHECK (char_length(body) BETWEEN 1 AND 4000)`)
+  * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+* **Constraints & Indexes:**
+  * `idx_direct_messages_conv_created` (`INDEX ON public.direct_messages(conversation_id, created_at ASC)`) — Optimized for chronological thread retrieval.
+* **Server-Side Security RPC & Triggers:**
+  * `public.send_direct_message(p_conversation_id UUID, p_body TEXT)`: Atomic message dispatch function (`SECURITY DEFINER`, search_path set). Strictly checks caller membership (`is_conversation_member`), validates non-empty whitespace and 1..4000 character limit, inserts message, and advances sender's `last_read_at`.
+  * `direct_messages_touch AFTER INSERT`: Database trigger executing `public.touch_conversation()` to automatically update `conversations.last_message_at = now()`.
+
+---
+
+### 2.13 `public.notifications` `[REQUIRED FOR MVP]`
 * **Columns:**
   * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
   * `user_id` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)

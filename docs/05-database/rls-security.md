@@ -293,6 +293,83 @@ CREATE POLICY "storage_docs_owner_upload"
   );
 ```
 
+### 2.8 Clinical Messaging (`public.conversations`, `public.conversation_participants`, `public.direct_messages`) `[IMPLEMENTED MVP-07]`
+
+```sql
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.conversation_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+
+-- Helper SQL Function: check if user is a member of the conversation
+CREATE OR REPLACE FUNCTION public.is_conversation_member(_conversation_id uuid, _user_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.conversation_participants
+    WHERE conversation_id = _conversation_id AND user_id = _user_id
+  );
+$$;
+
+-- 1. Conversations: Only members or administrators can view conversations
+CREATE POLICY "conversations_select_participant" 
+  ON public.conversations FOR SELECT TO authenticated
+  USING (public.is_conversation_member(id, auth.uid()) OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+CREATE POLICY "conversations_insert_authenticated" 
+  ON public.conversations FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "conversations_update_participant" 
+  ON public.conversations FOR UPDATE TO authenticated
+  USING (public.is_conversation_member(id, auth.uid()) OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+-- 2. Participants: Only conversation members can view participants list
+CREATE POLICY "conversation_participants_select" 
+  ON public.conversation_participants FOR SELECT TO authenticated
+  USING (public.is_conversation_member(conversation_id, auth.uid()) OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+CREATE POLICY "conversation_participants_insert" 
+  ON public.conversation_participants FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+-- 3. Direct Messages: Read restricted to verified conversation members
+CREATE POLICY "direct_messages_select" 
+  ON public.direct_messages FOR SELECT TO authenticated
+  USING (public.is_conversation_member(conversation_id, auth.uid()) OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+-- Insertion requires caller to be a participant AND sender_id must strictly match auth.uid()
+CREATE POLICY "direct_messages_insert" 
+  ON public.direct_messages FOR INSERT TO authenticated
+  WITH CHECK (
+    sender_id = auth.uid() AND
+    public.is_conversation_member(conversation_id, auth.uid())
+  );
+
+-- Updating message status restricted to original sender or admin
+CREATE POLICY "direct_messages_update" 
+  ON public.direct_messages FOR UPDATE TO authenticated
+  USING (sender_id = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role));
+```
+
+#### Security Definer Messaging RPC Functions (MVP-07)
+To prevent client-side sender spoofing, preserve appointment-level participant integrity, and ensure atomic conversation timestamp synchronization:
+1. `public.get_or_create_appointment_conversation(p_appointment_id uuid)`:
+   - `SECURITY DEFINER` with `SET search_path = public, pg_temp`.
+   - Requires `auth.uid() IS NOT NULL` (Error: `28000`).
+   - Validates appointment exists and resolves `pet_parent_id` and assigned `vet_user_id` (Error: `P0002`).
+   - Asserts caller is strictly the appointment's pet parent or assigned veterinarian (Error: `42501`).
+   - Idempotently retrieves existing conversation via unique index on `appointment_id` or creates conversation and inserts both participants in a single transaction.
+2. `public.send_direct_message(p_conversation_id uuid, p_body text)`:
+   - `SECURITY DEFINER` with `SET search_path = public, pg_temp`.
+   - Derives sender strictly from `auth.uid()` (eliminates client spoofing).
+   - Validates message body length (`1 <= length(trim(p_body)) <= 4000`) (Error: `22023`).
+   - Verifies caller membership in conversation (Error: `42501`).
+   - Inserts message into `public.direct_messages` and atomically updates `conversations.last_message_at = now()`.
+   - Updates `last_read_at = now()` for sender in `conversation_participants`.
+3. `public.mark_conversation_read(p_conversation_id uuid)`:
+   - Updates `last_read_at = now()` in `conversation_participants` for `auth.uid()`.
+4. `public.get_user_conversations()` & `public.get_unread_message_count()`:
+   - Aggregates conversations and calculates unread counts strictly for `auth.uid()` against messages where `sender_id != auth.uid()` and `created_at > participant.last_read_at`.
+
 ---
 
 ## 3. Backend & Client Security Controls
