@@ -52,8 +52,11 @@ class AuthService {
     const { email, password, fullName, role, specialty, priceUsd } = params;
 
     // RBAC validation: mobile clients can ONLY register pet_parent or vet
-    if (role !== 'pet_parent' && role !== 'vet') {
-      throw new ValidationError('Invalid registration role selected.');
+    const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
+    if (normalizedRole !== 'pet_parent' && normalizedRole !== 'vet') {
+      throw new ValidationError(
+        'Invalid registration role selected. Public signup only supports "pet_parent" or "vet".',
+      );
     }
 
     if (!email || !email.includes('@')) {
@@ -68,23 +71,37 @@ class AuthService {
       throw new ValidationError('Please enter your full name (minimum 2 characters).');
     }
 
+    const sanitizedSpecialty = specialty?.trim() || 'General Veterinary Medicine';
+    const sanitizedPriceUsd =
+      typeof priceUsd === 'number' && !isNaN(priceUsd) && priceUsd > 0 ? priceUsd : 29;
+
+    const authMetadata: Record<string, unknown> = {
+      full_name: fullName.trim(),
+      role: normalizedRole,
+    };
+
+    if (normalizedRole === 'vet') {
+      authMetadata.specialty = sanitizedSpecialty;
+      authMetadata.price_usd = sanitizedPriceUsd;
+    }
+
     console.info('🚀 [AuthService.register] Starting account registration:', {
       email: email.trim(),
       fullName: fullName.trim(),
-      role,
-      specialty: role === 'vet' ? specialty : undefined,
-      priceUsd: role === 'vet' ? priceUsd : undefined,
+      role: normalizedRole,
+      specialty: normalizedRole === 'vet' ? sanitizedSpecialty : undefined,
+      priceUsd: normalizedRole === 'vet' ? sanitizedPriceUsd : undefined,
     });
 
     try {
-      console.info('📡 [AuthService.register] Sending supabase.auth.signUp request...');
+      console.info(
+        '📡 [AuthService.register] Sending supabase.auth.signUp request with metadata...',
+      );
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
-          data: {
-            full_name: fullName.trim(),
-          },
+          data: authMetadata,
         },
       });
 
@@ -130,69 +147,71 @@ class AuthService {
           '⚠️ [AuthService.register] User created in auth.users, but NO active session returned.',
           'This means "Confirm email" is ENABLED in your Supabase project settings.',
           'The user must click the confirmation email link before Supabase issues an active session.',
+          'Database trigger handle_new_user() automatically assigned the profile, role, and vet profile.',
         );
       }
 
-      // Upsert profile record
-      try {
-        console.info('📝 [AuthService.register] Upserting public.profiles for user:', user.id);
-        const { data: pData, error: pError } = await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: fullName.trim(),
-          onboarded: false,
-        });
-
-        if (pError) {
-          console.error('❌ [AuthService.register] Profile upsert error:', pError);
-        } else {
-          console.info('✅ [AuthService.register] Profile upserted successfully:', pData);
-        }
-      } catch (e) {
-        console.error('❌ [AuthService.register] Profile upsert exception:', e);
-      }
-
-      // Assign requested role in public.user_roles
-      try {
-        console.info('🛡️ [AuthService.register] Inserting public.user_roles:', {
-          userId: user.id,
-          role,
-        });
-        const { data: rData, error: rError } = await supabase.from('user_roles').insert({
-          user_id: user.id,
-          role,
-        });
-
-        if (rError) {
-          console.error('❌ [AuthService.register] User role insert error:', rError);
-        } else {
-          console.info('✅ [AuthService.register] User role inserted successfully:', rData);
-        }
-      } catch (e) {
-        console.error('❌ [AuthService.register] Role assignment exception:', e);
-      }
-
-      // If registered as vet, create vet_profiles record with verified: false
-      if (role === 'vet') {
+      // If an active session was returned, perform client-side idempotent fallbacks.
+      // If no session was returned, handle_new_user() already created them atomically under SECURITY DEFINER.
+      if (session) {
         try {
-          console.info(
-            '🩺 [AuthService.register] Inserting public.vet_profiles for vet user:',
-            user.id,
-          );
-          const { data: vData, error: vError } = await supabase.from('vet_profiles').insert({
-            user_id: user.id,
-            name: fullName.trim(),
-            specialty: specialty || 'General Veterinary Medicine',
-            price_usd: priceUsd || 29,
-            verified: false,
+          console.info('📝 [AuthService.register] Upserting public.profiles for user:', user.id);
+          const { data: pData, error: pError } = await supabase.from('profiles').upsert({
+            id: user.id,
+            full_name: fullName.trim(),
+            onboarded: false,
           });
 
-          if (vError) {
-            console.error('❌ [AuthService.register] Vet profile insert error:', vError);
+          if (pError) {
+            console.warn('⚠️ [AuthService.register] Profile upsert warning:', pError);
           } else {
-            console.info('✅ [AuthService.register] Vet profile created successfully:', vData);
+            console.info('✅ [AuthService.register] Profile upserted successfully:', pData);
           }
         } catch (e) {
-          console.error('❌ [AuthService.register] Vet profile creation exception:', e);
+          console.warn('⚠️ [AuthService.register] Profile upsert exception:', e);
+        }
+
+        try {
+          console.info('🛡️ [AuthService.register] Inserting public.user_roles:', {
+            userId: user.id,
+            role: normalizedRole,
+          });
+          const { data: rData, error: rError } = await supabase.from('user_roles').insert({
+            user_id: user.id,
+            role: normalizedRole,
+          });
+
+          if (rError) {
+            console.warn('⚠️ [AuthService.register] User role insert warning:', rError);
+          } else {
+            console.info('✅ [AuthService.register] User role inserted successfully:', rData);
+          }
+        } catch (e) {
+          console.warn('⚠️ [AuthService.register] Role assignment exception:', e);
+        }
+
+        if (normalizedRole === 'vet') {
+          try {
+            console.info(
+              '🩺 [AuthService.register] Inserting public.vet_profiles for vet user:',
+              user.id,
+            );
+            const { data: vData, error: vError } = await supabase.from('vet_profiles').insert({
+              user_id: user.id,
+              name: fullName.trim(),
+              specialty: sanitizedSpecialty,
+              price_usd: sanitizedPriceUsd,
+              verified: false,
+            });
+
+            if (vError) {
+              console.warn('⚠️ [AuthService.register] Vet profile insert warning:', vError);
+            } else {
+              console.info('✅ [AuthService.register] Vet profile created successfully:', vData);
+            }
+          } catch (e) {
+            console.warn('⚠️ [AuthService.register] Vet profile creation exception:', e);
+          }
         }
       }
 
@@ -280,14 +299,56 @@ class AuthService {
           .maybeSingle(),
       ]);
 
+      if (profileRes.error) {
+        console.error('❌ [AuthService] Failed to load profile:', profileRes.error);
+        throw new ApiError(`Failed to load user profile: ${profileRes.error.message}`, 500);
+      }
+
+      if (rolesRes.error) {
+        console.error('❌ [AuthService] Failed to load user roles:', rolesRes.error);
+        throw new ApiError(`Failed to load user roles: ${rolesRes.error.message}`, 500);
+      }
+
+      if (vetRes.error) {
+        console.error('❌ [AuthService] Failed to load vet profile:', vetRes.error);
+        throw new ApiError(`Failed to load vet profile: ${vetRes.error.message}`, 500);
+      }
+
       const prof = profileRes.data;
       const roleRows = (rolesRes.data ?? []) as { role: UserRole }[];
-      const isVet = !!vetRes.data || roleRows.some((r) => r.role === 'vet');
+      let isVet = !!vetRes.data || roleRows.some((r) => r.role === 'vet');
       const isVetVerified = vetRes.data?.verified === true;
 
       let roles: UserRole[] = roleRows.map((r) => r.role);
+
+      // If user_roles record is missing, determine role from vet_profile or auth metadata
       if (roles.length === 0) {
-        roles = [isVet ? 'vet' : 'pet_parent'];
+        let metaRole: string | undefined;
+        try {
+          const { data: authUserData } = await supabase.auth.getUser();
+          metaRole = authUserData?.user?.user_metadata?.role;
+        } catch {
+          // Non-blocking metadata check
+        }
+
+        const isVetDesignated = isVet || metaRole === 'vet' || metaRole === 'veterinarian';
+        const fallbackRole: UserRole = isVetDesignated ? 'vet' : 'pet_parent';
+        roles = [fallbackRole];
+        isVet = isVetDesignated;
+
+        // Attempt self-healing insert for authenticated user (claim own role RLS policy allows non-admin insert)
+        try {
+          await supabase.from('user_roles').insert({
+            user_id: userId,
+            role: fallbackRole,
+          });
+          console.info(
+            `🩹 [AuthService] Self-healed missing user_roles row as "${fallbackRole}" for user:`,
+            userId,
+          );
+        } catch (healErr) {
+          console.warn('⚠️ [AuthService] Self-healing user_roles warning:', healErr);
+        }
       }
 
       return {
@@ -302,16 +363,8 @@ class AuthService {
         isVetVerified,
       };
     } catch (error) {
-      console.warn('[AuthService] Error loading user profile:', error);
-      return {
-        id: userId,
-        email: email || '',
-        fullName: 'Vetopia User',
-        roles: ['pet_parent'],
-        onboarded: false,
-        isVet: false,
-        isVetVerified: false,
-      };
+      console.error('❌ [AuthService] Unrecoverable error in loadUserProfile:', error);
+      throw this.sanitizeError(error);
     }
   }
 

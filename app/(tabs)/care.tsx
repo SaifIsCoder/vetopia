@@ -199,33 +199,51 @@ export default function CareScreen() {
           </View>
         </Card>
 
-        <Card style={styles.menuCard}>
-          <View style={styles.menuRow}>
-            <View style={styles.menuIconContainer}>
-              <Bot size={20} color={colors.ink} />
+        <TouchableOpacity
+          onPress={() => router.push('/ai/chat')}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="24/7 AI Veterinary Triage"
+          testID="btn-care-ai-triage"
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={styles.menuIconContainer}>
+                <Bot size={20} color={colors.ink} />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>24/7 AI Veterinary Triage</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Gemini symptom checker & emergency detection
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
             </View>
-            <View style={styles.menuContent}>
-              <Heading level={4}>24/7 AI Veterinary Triage</Heading>
-              <Text variant="bodySm" color={colors.muted}>
-                MVP-09 Gemini symptom checker (Phase 10)
-              </Text>
-            </View>
-          </View>
-        </Card>
+          </Card>
+        </TouchableOpacity>
 
-        <Card style={styles.menuCard}>
-          <View style={styles.menuRow}>
-            <View style={styles.menuIconContainer}>
-              <Settings size={20} color={colors.ink} />
+        <TouchableOpacity
+          onPress={() => router.push('/settings/profile')}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Settings and Biometrics"
+          testID="btn-care-settings"
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={styles.menuIconContainer}>
+                <Settings size={20} color={colors.ink} />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Settings & Biometrics</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Preferences, profile, notifications & security
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
             </View>
-            <View style={styles.menuContent}>
-              <Heading level={4}>Settings & Biometrics</Heading>
-              <Text variant="bodySm" color={colors.muted}>
-                MVP-10 Preferences, notifications & security (Phase 11)
-              </Text>
-            </View>
-          </View>
-        </Card>
+          </Card>
+        </TouchableOpacity>
       </View>
     </Screen>
   );

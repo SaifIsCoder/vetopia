@@ -231,23 +231,45 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 
 ---
 
-### 2.13 `public.notifications` `[REQUIRED FOR MVP]`
+### 2.11 `public.notifications` `[IMPLEMENTED MVP-08]`
 * **Columns:**
   * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
   * `user_id` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)
+  * `type` (`TEXT`, NOT NULL) — e.g. `'appointment_confirmed'`, `'appointment_reminder'`, `'doctor_entered_consultation'`, `'new_message'`, `'prescription_issued'`, `'appointment_cancelled'`
   * `title` (`TEXT`, NOT NULL)
   * `body` (`TEXT`, NOT NULL)
-  * `kind` (`TEXT`, NOT NULL) — e.g. `'appointment_reminder'`, `'call_ready'`, `'prescription_issued'`, `'new_message'`
-  * `data` (`JSONB`, NOT NULL, Default: `'{}'::jsonb`) — Contains deep link payload
+  * `data` (`JSONB`, NOT NULL, Default: `'{}'::jsonb`) — Contains deep link payload (`deepLink`, `route`, `appointmentId`, `prescriptionId`, `conversationId`)
   * `read` (`BOOLEAN`, NOT NULL, Default: `FALSE`)
   * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
-* **Indexes:** `CREATE INDEX idx_notifications_user_unread ON public.notifications(user_id, read);`
+  * `read_at` (`TIMESTAMPTZ`, Nullable)
+* **Indexes:**
+  * `idx_notifications_user_created ON public.notifications(user_id, created_at DESC)`
+  * `idx_notifications_user_unread ON public.notifications(user_id, read) WHERE read = FALSE`
 
-### 2.11 `public.device_tokens` `[REQUIRED FOR MVP]`
+---
+
+### 2.12 `public.device_tokens` `[IMPLEMENTED MVP-08]`
 * **Columns:**
   * `id` (`UUID`, Primary Key, Default: `gen_random_uuid()`)
   * `user_id` (`UUID`, NOT NULL, `REFERENCES auth.users(id) ON DELETE CASCADE`)
   * `token` (`TEXT`, NOT NULL) — Expo Push Token (`ExponentPushToken[...]`)
-  * `platform` (`TEXT`, NOT NULL, `CHECK (platform IN ('ios', 'android'))`)
+  * `platform` (`TEXT`, NOT NULL, `CHECK (platform IN ('ios', 'android', 'web'))`)
+  * `is_active` (`BOOLEAN`, NOT NULL, Default: `TRUE`)
+  * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
   * `updated_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+  * `last_used_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
 * **Constraints:** `UNIQUE (user_id, token)`
+* **Indexes:**
+  * `idx_device_tokens_user ON public.device_tokens(user_id)`
+  * `idx_device_tokens_token ON public.device_tokens(token)`
+  * `idx_device_tokens_active ON public.device_tokens(is_active) WHERE is_active = TRUE`
+
+---
+
+### 2.13 `public.appointment_reminders` `[IMPLEMENTED MVP-08]`
+* **Columns:**
+  * `appointment_id` (`UUID`, NOT NULL, `REFERENCES public.appointments(id) ON DELETE CASCADE`)
+  * `reminder_type` (`TEXT`, NOT NULL) — e.g. `'15m'`
+  * `sent_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
+* **Constraints:** `PRIMARY KEY (appointment_id, reminder_type)` (guarantees idempotency of 15m consultation reminders)
+

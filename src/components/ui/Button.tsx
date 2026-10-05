@@ -1,5 +1,12 @@
 import React from 'react';
-import { Pressable, PressableProps, ActivityIndicator, StyleSheet, ViewStyle } from 'react-native';
+import {
+  Pressable,
+  PressableProps,
+  ActivityIndicator,
+  StyleSheet,
+  ViewStyle,
+  StyleProp,
+} from 'react-native';
 import { colors } from '../../theme/colors';
 import { radii } from '../../theme/radii';
 import { spacing } from '../../theme/spacing';
@@ -16,7 +23,7 @@ export interface ButtonProps extends Omit<PressableProps, 'style'> {
   disabled?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const Button: React.FC<ButtonProps> = ({

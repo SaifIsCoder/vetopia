@@ -58,7 +58,7 @@ Vetopia Mobile delivers veterinary clinical care, real-time telemedicine, and pe
 * **Telemedicine (WebRTC):** Waiting room, peer-to-peer audio/video call, hardware toggles (mic, camera, speaker, camera flip), network reconnection, and call completion.
 * **Prescriptions:** Doctor creates structured e-prescriptions (drug name, dosage, frequency, duration, notes); pet parent views and downloads them.
 * **1-to-1 Clinical Messaging:** Direct text messaging between pet parent and doctor with appointment context, unread counters, and delivery status.
-* **Basic AI Assistant:** 24/7 symptom checker and emergency red-flag triage chatbot powered by Google Gemini 2.5 Flash.
+* **Basic AI Assistant:** 24/7 symptom checker and emergency red-flag triage chatbot powered by Google Gemini 3.8 Flash (with Gemini 3.7 Flash fallback; reconciled from legacy Gemini 2.5 Flash sunset by Google).
 * **Notifications:** Push and in-app alerts for appointment confirmations, 15-minute reminders, incoming calls, messages, and new prescriptions.
 * **Admin Support Endpoints:** Backend web endpoints for vet license verification, doctor onboarding approval, and system monitoring.
 

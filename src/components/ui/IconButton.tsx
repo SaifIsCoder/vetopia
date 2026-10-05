@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, PressableProps, StyleSheet, ViewStyle } from 'react-native';
+import { Pressable, PressableProps, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import { colors } from '../../theme/colors';
 import { radii } from '../../theme/radii';
 
@@ -8,7 +8,7 @@ export interface IconButtonProps extends Omit<PressableProps, 'style'> {
   accessibilityLabel: string;
   size?: number;
   backgroundColor?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const IconButton: React.FC<IconButtonProps> = ({

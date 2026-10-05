@@ -17,9 +17,9 @@ const appEnv = (process.env.EXPO_PUBLIC_APP_ENV || 'development') as
 
 export const env: EnvConfig = {
   apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3000/api/v1',
-  supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://fkhsqstkkksaerpjoczi.supabase.co',
+  supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://oqqdznxlqnscvhlluiit.supabase.co',
   supabaseAnonKey:
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_82bHaIpBP9cTL2efnWLldA_ilGDcx83',
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_e0fCqz8GCYtQqIG_LvrG8w_MDI6mGx3',
   livekitUrl: process.env.EXPO_PUBLIC_LIVEKIT_URL || 'wss://vetopia-rtc.livekit.cloud',
   appEnv,
   isDevelopment: appEnv === 'development',

@@ -14,6 +14,7 @@ jest.mock('../../src/lib/supabase/client', () => {
         resetPasswordForEmail: jest.fn(),
         refreshSession: jest.fn(),
         getSession: jest.fn(),
+        getUser: jest.fn(),
       },
       from: jest.fn(),
       rpc: jest.fn(),
@@ -51,6 +52,7 @@ describe('AuthService (Supabase Integration)', () => {
               eq: jest.fn().mockReturnValue({
                 maybeSingle: jest.fn().mockResolvedValue({
                   data: { id: 'u1', full_name: 'Sarah Jenkins', onboarded: false },
+                  error: null,
                 }),
               }),
             }),
@@ -62,6 +64,7 @@ describe('AuthService (Supabase Integration)', () => {
             select: jest.fn().mockReturnValue({
               eq: jest.fn().mockResolvedValue({
                 data: [{ role: 'pet_parent' }],
+                error: null,
               }),
             }),
           };
@@ -70,7 +73,7 @@ describe('AuthService (Supabase Integration)', () => {
           return {
             select: jest.fn().mockReturnValue({
               eq: jest.fn().mockReturnValue({
-                maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
               }),
             }),
           };
@@ -93,6 +96,7 @@ describe('AuthService (Supabase Integration)', () => {
         options: {
           data: {
             full_name: 'Sarah Jenkins',
+            role: 'pet_parent',
           },
         },
       });
@@ -101,25 +105,13 @@ describe('AuthService (Supabase Integration)', () => {
       expect(result.session).toBeDefined();
     });
 
-    test('Successfully registers a veterinarian with specialty and fee', async () => {
-      const mockInsertVet = jest.fn().mockResolvedValue({ error: null });
-
+    test('Successfully registers a veterinarian with specialty and fee (metadata persisted when session is null)', async () => {
       (supabase.auth.signUp as jest.Mock).mockResolvedValueOnce({
         data: {
           user: { id: 'v1', email: 'doctor@example.com' },
           session: null,
         },
         error: null,
-      });
-
-      (supabase.from as jest.Mock).mockImplementation((table: string) => {
-        if (table === 'vet_profiles') {
-          return { insert: mockInsertVet };
-        }
-        return {
-          upsert: jest.fn().mockResolvedValue({ error: null }),
-          insert: jest.fn().mockResolvedValue({ error: null }),
-        };
       });
 
       const result = await authService.register({
@@ -131,15 +123,114 @@ describe('AuthService (Supabase Integration)', () => {
         priceUsd: 35,
       });
 
-      expect(mockInsertVet).toHaveBeenCalledWith({
-        user_id: 'v1',
-        name: 'Dr. John Doe',
-        specialty: 'Dermatology',
-        price_usd: 35,
-        verified: false,
+      expect(supabase.auth.signUp).toHaveBeenCalledWith({
+        email: 'doctor@example.com',
+        password: 'DoctorPassword123!',
+        options: {
+          data: {
+            full_name: 'Dr. John Doe',
+            role: 'vet',
+            specialty: 'Dermatology',
+            price_usd: 35,
+          },
+        },
       });
 
       expect(result.user?.id).toBe('v1');
+      expect(result.session).toBeNull();
+    });
+
+    test('Successfully registers a veterinarian with active session and performs progressive client inserts', async () => {
+      const mockInsertVet = jest.fn().mockResolvedValue({ error: null });
+      const mockInsertRole = jest.fn().mockResolvedValue({ error: null });
+      const mockUpsertProfile = jest.fn().mockResolvedValue({ error: null });
+
+      (supabase.auth.signUp as jest.Mock).mockResolvedValueOnce({
+        data: {
+          user: { id: 'v2', email: 'doctor2@example.com' },
+          session: {
+            access_token: 'acc-token-2',
+            refresh_token: 'ref-token-2',
+            user: { id: 'v2', email: 'doctor2@example.com' },
+          },
+        },
+        error: null,
+      });
+
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'vet_profiles') {
+          return {
+            insert: mockInsertVet,
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'vp-2', name: 'Dr. Jane Smith', verified: false },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'user_roles') {
+          return {
+            insert: mockInsertRole,
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({
+                data: [{ role: 'vet' }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            upsert: mockUpsertProfile,
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'v2', full_name: 'Dr. Jane Smith', onboarded: false },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          insert: jest.fn().mockResolvedValue({ error: null }),
+        };
+      });
+
+      const result = await authService.register({
+        email: 'doctor2@example.com',
+        password: 'DoctorPassword123!',
+        fullName: 'Dr. Jane Smith',
+        role: 'vet',
+        specialty: 'Surgery',
+        priceUsd: 45,
+      });
+
+      expect(supabase.auth.signUp).toHaveBeenCalledWith({
+        email: 'doctor2@example.com',
+        password: 'DoctorPassword123!',
+        options: {
+          data: {
+            full_name: 'Dr. Jane Smith',
+            role: 'vet',
+            specialty: 'Surgery',
+            price_usd: 45,
+          },
+        },
+      });
+
+      expect(mockInsertVet).toHaveBeenCalledWith({
+        user_id: 'v2',
+        name: 'Dr. Jane Smith',
+        specialty: 'Surgery',
+        price_usd: 45,
+        verified: false,
+      });
+      expect(result.user?.id).toBe('v2');
+      expect(result.session).toBeDefined();
     });
 
     test('Rejects client-side privilege escalation attempt to admin', async () => {
@@ -346,6 +437,198 @@ describe('AuthService (Supabase Integration)', () => {
       expect(supabase.auth.signOut).toHaveBeenCalled();
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
       expect(useAuthStore.getState().user).toBeNull();
+    });
+  });
+
+  describe('Authoritative Profile Loading & Role Resilience', () => {
+    test('Loads pet_parent profile without converting to veterinarian', async () => {
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'u-parent', full_name: 'Parent User', onboarded: true },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'user_roles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({
+                data: [{ role: 'pet_parent' }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'vet_profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          };
+        }
+        return {};
+      });
+
+      const profile = await authService.loadUserProfile('u-parent', 'parent@example.com');
+      expect(profile.isVet).toBe(false);
+      expect(profile.roles).toContain('pet_parent');
+      expect(profile.roles).not.toContain('vet');
+    });
+
+    test('Loads veterinarian profile with verified status', async () => {
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'u-vet', full_name: 'Dr. Vet', onboarded: true },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'user_roles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({
+                data: [{ role: 'vet' }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'vet_profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'vp-1', name: 'Dr. Vet', verified: true },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      });
+
+      const profile = await authService.loadUserProfile('u-vet', 'vet@example.com');
+      expect(profile.isVet).toBe(true);
+      expect(profile.isVetVerified).toBe(true);
+      expect(profile.roles).toContain('vet');
+    });
+
+    test('Self-heals missing user_roles row when user has vet_profile or metadata role "vet"', async () => {
+      const mockInsertRole = jest.fn().mockResolvedValue({ error: null });
+
+      (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+        data: {
+          user: {
+            id: 'u-vet-healing',
+            user_metadata: { role: 'vet' },
+          },
+        },
+        error: null,
+      });
+
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'u-vet-healing', full_name: 'Dr. Healed', onboarded: false },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'user_roles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({
+                data: [], // empty roles row in DB
+                error: null,
+              }),
+            }),
+            insert: mockInsertRole,
+          };
+        }
+        if (table === 'vet_profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'vp-heal', name: 'Dr. Healed', verified: false },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      });
+
+      const profile = await authService.loadUserProfile('u-vet-healing', 'vet-heal@example.com');
+      expect(profile.isVet).toBe(true);
+      expect(profile.roles).toEqual(['vet']);
+      expect(mockInsertRole).toHaveBeenCalledWith({
+        user_id: 'u-vet-healing',
+        role: 'vet',
+      });
+    });
+
+    test('Throws error when user_roles query returns database error instead of silently defaulting', async () => {
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'u-err', full_name: 'Dr. Err', onboarded: true },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'user_roles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({
+                data: null,
+                error: { message: 'connection timeout to user_roles', code: '57P01' },
+              }),
+            }),
+          };
+        }
+        if (table === 'vet_profiles') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: null,
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      });
+
+      await expect(authService.loadUserProfile('u-err', 'err@example.com')).rejects.toThrow();
     });
   });
 });

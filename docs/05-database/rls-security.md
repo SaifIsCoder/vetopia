@@ -370,6 +370,62 @@ To prevent client-side sender spoofing, preserve appointment-level participant i
 4. `public.get_user_conversations()` & `public.get_unread_message_count()`:
    - Aggregates conversations and calculates unread counts strictly for `auth.uid()` against messages where `sender_id != auth.uid()` and `created_at > participant.last_read_at`.
 
+### 2.9 Notifications & Device Tokens (`public.notifications`, `public.device_tokens`) `[IMPLEMENTED MVP-08]`
+
+```sql
+ALTER TABLE public.device_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appointment_reminders ENABLE ROW LEVEL SECURITY;
+
+-- 1. Device Tokens: Authenticated users manage only their own tokens
+CREATE POLICY "device_tokens_select_own" 
+  ON public.device_tokens FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "device_tokens_insert_own" 
+  ON public.device_tokens FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "device_tokens_update_own" 
+  ON public.device_tokens FOR UPDATE TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "device_tokens_delete_own" 
+  ON public.device_tokens FOR DELETE TO authenticated
+  USING (user_id = auth.uid());
+
+-- 2. Notifications: Users can only read and mark their own notifications
+CREATE POLICY "notifications_select_own" 
+  ON public.notifications FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "notifications_update_own" 
+  ON public.notifications FOR UPDATE TO authenticated
+  USING (user_id = auth.uid());
+
+-- Deny direct client INSERT/DELETE: Creation is strictly server-authoritative
+REVOKE INSERT, DELETE ON public.notifications FROM authenticated, anon;
+REVOKE ALL ON public.appointment_reminders FROM anon, authenticated;
+```
+
+#### Security Definer Notification RPC Functions (MVP-08)
+To prevent cross-user token tampering, ensure server-authoritative recipient determination, and guarantee notification delivery invariants:
+1. `public.register_device_token(p_token text, p_platform text)`:
+   - `SECURITY DEFINER` with `SET search_path = public, pg_temp`.
+   - Requires `auth.uid() IS NOT NULL` (Error: `28000`).
+   - Validates non-empty token and supported platform.
+   - Atomically upserts `public.device_tokens` for `auth.uid()` on `(user_id, token)`.
+2. `public.deactivate_device_token(p_token text)`:
+   - Sets `is_active = FALSE` strictly where `user_id = auth.uid() AND token = p_token`.
+3. `public.mark_notification_read(p_notification_id uuid)` & `public.mark_all_notifications_read()`:
+   - Updates `read = TRUE, read_at = now()` strictly for rows where `user_id = auth.uid()`.
+4. `public.notify_doctor_entered_consultation(p_appointment_id uuid)`:
+   - Asserts caller is strictly the assigned consulting veterinarian (`v_vet.user_id = auth.uid()`, Error: `42501`).
+   - Resolves the pet parent ID server-side and inserts the notification.
+5. `public.process_appointment_reminders()`:
+   - Internal `SECURITY DEFINER` function scanning scheduled visits in `[NOW(), NOW() + 16m]`.
+   - Idempotently logs sent reminders in `public.appointment_reminders(appointment_id, '15m')` preventing duplicate alerts.
+
 ---
 
 ## 3. Backend & Client Security Controls

@@ -1,37 +1,63 @@
 import React from 'react';
-import { Pressable, StyleSheet, ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
 import { colors } from '../../theme/colors';
 import { radii } from '../../theme/radii';
 import { spacing } from '../../theme/spacing';
 import { Text } from './Text';
 
 export interface ChipProps {
-  label: string;
+  label?: string;
   selected?: boolean;
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+  disabled?: boolean;
+  icon?: React.ReactNode;
+  accessibilityRole?: 'checkbox' | 'button' | 'radio';
+  accessibilityLabel?: string;
+  children?: React.ReactNode;
 }
 
-export const Chip: React.FC<ChipProps> = ({ label, selected = false, onPress, style }) => {
+export const Chip: React.FC<ChipProps> = ({
+  label,
+  selected = false,
+  onPress,
+  style,
+  testID,
+  disabled = false,
+  icon,
+  accessibilityRole = 'checkbox',
+  accessibilityLabel,
+  children,
+}) => {
   return (
     <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: selected }}
+      testID={testID}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel || label}
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.chip,
         selected ? styles.selected : styles.unselected,
-        pressed && styles.pressed,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
         style,
       ]}
     >
-      <Text
-        variant="bodySm"
-        color={selected ? colors.ink : colors.inkSoft}
-        style={[styles.label, selected && styles.selectedLabel]}
-      >
-        {label}
-      </Text>
+      {icon ? <View style={styles.iconContainer}>{icon}</View> : null}
+      {children ? (
+        children
+      ) : label ? (
+        <Text
+          variant="bodySm"
+          color={disabled ? colors.muted : selected ? colors.ink : colors.inkSoft}
+          style={[styles.label, selected && styles.selectedLabel]}
+        >
+          {label}
+        </Text>
+      ) : null}
     </Pressable>
   );
 };
@@ -39,6 +65,7 @@ export const Chip: React.FC<ChipProps> = ({ label, selected = false, onPress, st
 const styles = StyleSheet.create({
   chip: {
     minHeight: 36,
+    flexDirection: 'row',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radii.pill,
@@ -59,6 +86,12 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  iconContainer: {
+    marginRight: spacing.xs,
   },
   label: {
     fontWeight: '500',

@@ -69,6 +69,17 @@ Expo Push Notification Gateway (Exponent Server SDK)
 
 ## 4. Android Notification Channels
 
-Vetopia Mobile registers two distinct notification channels on Android (`notifee` or `expo-notifications`):
+Vetopia Mobile registers two distinct notification channels on Android (`expo-notifications`):
 1. **`consultations` (High/Urgent Priority):** Bypasses Do Not Disturb (with permission), enables vibration pattern and high-priority heads-up banner for incoming calls and 15-minute appointment countdowns.
 2. **`messages_general` (Normal Priority):** Standard notification sound and notification center delivery for chat messages and general updates.
+
+---
+
+## 5. Client Lifecycle & Deep Linking `[IMPLEMENTED MVP-08]`
+
+* **Token Lifecycle:** On authentication, the mobile client requests notification permissions via `notificationService.registerForPushNotificationsAsync()` and registers the Expo push token on the server via `register_device_token` RPC. On logout, the token is deactivated.
+* **Cold-Start Launch:** If the application is killed when the notification is tapped, `Notifications.getLastNotificationResponseAsync()` resolves the initial payload. The app holds the target destination until authentication and onboarding guards resolve, then navigates to the target screen.
+* **Background Tap:** `Notifications.addNotificationResponseReceivedListener` handles taps when the app is backgrounded or in memory, routing immediately via Expo Router.
+* **Token Cleanup:** The server-side dispatcher inspects Expo delivery receipts. If a token returns `DeviceNotRegistered`, it is marked `is_active = FALSE`.
+* **Idempotent 15-Minute Reminders:** The server reminder worker triggers `public.process_appointment_reminders()`, which atomically records processed reminders in `public.appointment_reminders(appointment_id, '15m')`, guaranteeing zero duplicate reminders.
+

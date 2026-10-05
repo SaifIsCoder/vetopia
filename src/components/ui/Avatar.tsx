@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import { Image } from 'expo-image';
 import { colors } from '../../theme/colors';
 import { radii } from '../../theme/radii';
@@ -9,10 +9,11 @@ export interface AvatarProps {
   source?: string | null;
   name?: string;
   size?: number;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ source, name, size = 48, style }) => {
+export const Avatar: React.FC<AvatarProps> = ({ source, name, size = 48, style, testID }) => {
   const [hasError, setHasError] = useState(false);
 
   const getInitials = (text?: string): string => {
@@ -30,7 +31,7 @@ export const Avatar: React.FC<AvatarProps> = ({ source, name, size = 48, style }
 
   if (source && !hasError) {
     return (
-      <View style={[styles.container, containerStyle, style]}>
+      <View testID={testID} style={[styles.container, containerStyle, style]}>
         <Image
           source={{ uri: source }}
           style={[styles.image, containerStyle]}
@@ -43,7 +44,7 @@ export const Avatar: React.FC<AvatarProps> = ({ source, name, size = 48, style }
   }
 
   return (
-    <View style={[styles.container, styles.fallback, containerStyle, style]}>
+    <View testID={testID} style={[styles.container, styles.fallback, containerStyle, style]}>
       <Text
         variant={size >= 56 ? 'headingMd' : 'bodySm'}
         color={colors.ink}

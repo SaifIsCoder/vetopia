@@ -73,6 +73,8 @@ export default function LoginScreen() {
       } finally {
         setLoading(false);
       }
+    } else {
+      setErrorMessage('Biometric authentication was cancelled or failed.');
     }
   };
 

@@ -30,6 +30,7 @@ export interface AuthState {
   biometricAvailable: boolean;
   biometricType: string;
   biometricsEnabled: boolean;
+  isBiometricLocked: boolean;
 
   // Actions
   initialize: (session: Session | null, profile: UserProfile | null) => Promise<void>;
@@ -39,6 +40,8 @@ export interface AuthState {
   setOnboardingCompleted: (completed: boolean) => void;
   setBiometricsEnabled: (enabled: boolean) => Promise<void>;
   setBiometricStatus: (available: boolean, type: string, enabled: boolean) => void;
+  unlockBiometrics: () => void;
+  lockBiometrics: () => void;
   clearSession: () => void;
   setLoading: (loading: boolean) => void;
 }
@@ -57,6 +60,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   biometricAvailable: false,
   biometricType: 'None',
   biometricsEnabled: false,
+  isBiometricLocked: false,
 
   initialize: async (session, profile) => {
     const bioStatus = await checkBiometricsAvailability();
@@ -65,6 +69,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       profile?.roles[0] ||
       (profile?.isVet ? 'vet' : 'pet_parent');
 
+    const hasSession = !!session && !!profile;
+    const isBiometricLocked = hasSession && bioStatus.isAvailable && bioStatus.isEnabled;
+
     set({
       session,
       user: profile,
@@ -72,11 +79,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       refreshToken: session?.refresh_token || null,
       role: primaryRole,
       roles: profile?.roles || [],
-      isAuthenticated: !!session && !!profile,
+      isAuthenticated: hasSession,
       onboardingCompleted: profile?.onboarded ?? false,
       biometricAvailable: bioStatus.isAvailable,
       biometricType: bioStatus.biometricType,
       biometricsEnabled: bioStatus.isEnabled,
+      isBiometricLocked,
       isInitialized: true,
       isLoading: false,
     });
@@ -103,6 +111,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       roles: currentProfile?.roles || [],
       isAuthenticated: true,
       onboardingCompleted: currentProfile?.onboarded ?? false,
+      isBiometricLocked: false,
       isLoading: false,
     });
   },
@@ -146,7 +155,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setBiometricsEnabled: async (enabled) => {
     await setBiometricsPreference(enabled);
-    set({ biometricsEnabled: enabled });
+    set({
+      biometricsEnabled: enabled,
+      isBiometricLocked: enabled ? false : false,
+    });
   },
 
   setBiometricStatus: (available, type, enabled) => {
@@ -155,6 +167,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       biometricType: type,
       biometricsEnabled: enabled,
     });
+  },
+
+  unlockBiometrics: () => {
+    set({ isBiometricLocked: false });
+  },
+
+  lockBiometrics: () => {
+    const state = get();
+    if (state.biometricsEnabled && state.isAuthenticated && state.biometricAvailable) {
+      set({ isBiometricLocked: true });
+    }
   },
 
   clearSession: () =>
@@ -167,6 +190,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       roles: [],
       isAuthenticated: false,
       onboardingCompleted: false,
+      isBiometricLocked: false,
       isLoading: false,
     }),
 

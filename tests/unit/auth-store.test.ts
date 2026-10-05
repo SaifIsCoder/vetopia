@@ -78,6 +78,28 @@ describe('AuthStore (Zustand)', () => {
     expect(state.roles).toContain('vet');
   });
 
+  test('Correctly identifies veterinarian role when isVet is true even if roles array is empty', async () => {
+    const mockSession = {
+      access_token: 'vet-access-token-empty',
+      refresh_token: 'vet-refresh-token-empty',
+      user: { id: 'v2', email: 'doctor2@vetopia.com' },
+    } as any;
+
+    const mockProfile: UserProfile = {
+      id: 'v2',
+      email: 'doctor2@vetopia.com',
+      fullName: 'Dr. Emma Brooks',
+      roles: [],
+      onboarded: true,
+      isVet: true,
+    };
+
+    await useAuthStore.getState().initialize(mockSession, mockProfile);
+
+    const state = useAuthStore.getState();
+    expect(state.role).toBe('vet');
+  });
+
   test('clearSession resets auth state cleanly', () => {
     const mockProfile: UserProfile = {
       id: 'u1',

@@ -266,7 +266,7 @@ This document specifies every screen included in the **Vetopia Mobile MVP**. All
 
 ---
 
-### Screen `SCR-AI-001`: 24/7 AI Triage Chatbot Screen
+### Screen `SCR-AI-001`: 24/7 AI Triage Chatbot Screen `[IMPLEMENTED MVP-09]`
 * **File Path:** `mobile/app/ai/chat.tsx`
 * **Purpose:** Natural language symptom checker for routine questions and emergency detection.
 * **Allowed Roles:** All users.
@@ -319,4 +319,25 @@ This document specifies every screen included in the **Vetopia Mobile MVP**. All
   * States: Initial loading spinner, empty conversation welcome state ("No messages yet. Send a message to start the consultation follow-up."), unauthorized conversation error view.
 * **API / Database Dependencies:** `public.send_direct_message` RPC, `public.mark_conversation_read` RPC, `public.direct_messages` table, Supabase Realtime channel.
 * **Related Requirements:** `FR-MSG-001`.
+
+---
+
+## 8. Notifications Module
+
+### Screen `SCR-NOTIF-001`: Notifications Inbox Screen
+* **File Path:** `mobile/app/notifications.tsx`
+* **Purpose:** Dedicated in-app notification center displaying persistent alerts for consultation bookings, 15-minute countdown reminders, doctor arrivals, direct messages, and digital prescriptions.
+* **Allowed Roles:** Authenticated Pet Parents and Veterinarians.
+* **Entry Points:** Notification bell icon on Home Header (`app/(tabs)/index.tsx`), deep link from system tray push notifications.
+* **Exit Points:** Back navigation button, deep link tap to target destination screen (`/appointments`, `/consult/[id]`, `/messages/[id]`, `/prescriptions/[id]`).
+* **UI Structure:**
+  * Header Bar: Back button, screen title "Notifications", unread count pill badge, and "Read all" button when unread count > 0.
+  * Notifications List: `FlatList` of `NotificationItem` components sorted chronologically (`created_at DESC`).
+  * Notification Item: Icon differentiated by event type (calendar for appointments, clock for 15m reminders, video for doctor arrival, chat bubble for messages, prescription icon for e-scripts), title, body, relative timestamp, unread indicator dot.
+  * Empty State: Bell icon with "No Notifications Yet" and explanation of alert types.
+  * Loading / Error States: Spinner while loading, retry card on network failure.
+  * Interaction: Tapping an item marks it as read and immediately routes to the entity's deep link.
+* **API / Database Dependencies:** `public.notifications`, `public.mark_notification_read` RPC, `public.mark_all_notifications_read` RPC, `public.get_unread_notification_count` RPC.
+* **Related Requirements:** `FR-NOTIF-001`.
+
 

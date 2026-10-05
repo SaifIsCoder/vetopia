@@ -392,21 +392,23 @@ This document specifies all REST API endpoints required for the **Vetopia Mobile
 
 ---
 
-## 6. AI Triage Module (`/ai`)
+## 6. AI Triage Module (`/ai`) `[IMPLEMENTED MVP-09]`
 
 ### `API-AI-001`: Stream AI Symptom Triage
 * **Method & Path:** `POST /api/v1/ai/triage-chat`
 * **Purpose:** Stream veterinary guidance and emergency detection.
 * **Authentication:** Bearer JWT (or Guest Rate-Limited)
+* **Rate Limits:** 15 requests/hour for authenticated users; 3 requests/24h per IP for guest triage.
 * **Request Body:**
   ```json
   {
     "messages": [
       { "role": "user", "content": "My dog ate 100g of dark chocolate 20 minutes ago." }
-    ]
+    ],
+    "petId": "uuid-optional"
   }
   ```
-* **Response:** Server-Sent Events (`text/event-stream`) streaming Markdown tokens, concluding with `[DONE]`.
+* **Response:** Server-Sent Events (`text/event-stream`) streaming Markdown tokens and `isEmergency` flags, concluding with `[DONE]`.
 * **Upstream Service:** Google Gemini 2.5 Flash with clinical safety instructions.
 * **Related Screen:** `AIChatbotScreen` (`SCR-AI-001`).
 
@@ -544,4 +546,153 @@ This document specifies all REST API endpoints required for the **Vetopia Mobile
 * **Event:** `INSERT` on schema `public`, table `direct_messages`, filter `conversation_id=eq.{id}`
 * **Payload:** Newly inserted `DirectMessage` row.
 * **Client Handling:** Deduplication via message `id`, chronological insertion into React Query cache, auto-scrolling to bottom.
+
+---
+
+## 8. Notifications & Push Delivery Module (`/notifications` & RPCs) `[IMPLEMENTED MVP-08]`
+
+### `API-NOTIF-001`: Register Device Push Token
+* **Method & Path:** `POST /api/v1/notifications/token` / `rpc('register_device_token', { p_token, p_platform })`
+* **Purpose:** Register or update an Expo Push Token (`ExponentPushToken[...]`) for the authenticated user's active device.
+* **Authentication:** Bearer JWT (`auth.uid() IS NOT NULL`).
+* **Request Body / RPC Parameters:**
+  ```json
+  {
+    "token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+    "platform": "ios"
+  }
+  ```
+* **Response (200 OK):**
+  ```json
+  {
+    "id": "token-uuid",
+    "user_id": "user-uuid",
+    "token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+    "platform": "ios",
+    "is_active": true,
+    "created_at": "2026-09-26T19:00:00Z",
+    "updated_at": "2026-09-26T19:00:00Z"
+  }
+  ```
+* **Security & Invariants:**
+  - `user_id` is set strictly to `auth.uid()`.
+  - Non-empty token validated (`ERRCODE: 22023`).
+  - Supported platforms: `ios`, `android`, `web`.
+  - Unique constraint `UNIQUE (user_id, token)` supports multi-device delivery without duplication.
+
+---
+
+### `API-NOTIF-002`: Deactivate Device Push Token
+* **Method & Path:** `rpc('deactivate_device_token', { p_token })`
+* **Purpose:** Deactivate a push token when user signs out.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):** `true`
+
+---
+
+### `API-NOTIF-003`: List User Notifications
+* **Method & Path:** Supabase SELECT `public.notifications`
+* **Filter:** `user_id = auth.uid()`, ordered by `created_at DESC`
+* **Purpose:** Retrieve persistent in-app notifications history for the authenticated user.
+* **Response (200 OK):**
+  ```json
+  [
+    {
+      "id": "notif-uuid",
+      "user_id": "user-uuid",
+      "type": "appointment_reminder",
+      "title": "Consultation Starting Soon",
+      "body": "Your consultation for Buddy starts in 15 minutes.",
+      "data": {
+        "kind": "appointment_reminder",
+        "appointmentId": "appt-uuid",
+        "deepLink": "vetopia://consult/appt-uuid"
+      },
+      "read": false,
+      "created_at": "2026-09-26T19:15:00Z",
+      "read_at": null
+    }
+  ]
+  ```
+* **Related Screen:** `NotificationsScreen` (`app/notifications.tsx`).
+
+---
+
+### `API-NOTIF-004`: Mark Notification Read
+* **Method & Path:** `rpc('mark_notification_read', { p_notification_id })`
+* **Purpose:** Mark a single notification as read.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):** `true`
+
+---
+
+### `API-NOTIF-005`: Mark All Notifications Read
+* **Method & Path:** `rpc('mark_all_notifications_read')`
+* **Purpose:** Atomically mark all unread notifications for the caller as read.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):** integer count of updated notifications.
+
+---
+
+### `API-NOTIF-006`: Total Unread Notification Count
+* **Method & Path:** `rpc('get_unread_notification_count')`
+* **Purpose:** Return count of unread notifications for the caller for badge rendering.
+* **Authentication:** Bearer JWT.
+* **Response (200 OK):** integer (e.g. `3`).
+* **Related Screen:** `NotificationBell` (`src/components/notifications/NotificationBell.tsx`).
+
+---
+
+### `API-NOTIF-007`: 15-Minute Consultation Reminder Batch Worker
+* **Method & Path:** `POST /api/v1/notifications/reminders/run` / `rpc('process_appointment_reminders')`
+* **Purpose:** Server-side scheduler scanning scheduled visits within `[NOW(), NOW() + 16m]`, recording reminders idempotently in `public.appointment_reminders`, and dispatching push notifications.
+* **Security:** Privileged server operation; automated cron / interval timer.
+* **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "processedCount": 2,
+    "timestamp": "2026-09-26T19:15:00Z"
+  }
+  ```
+
+---
+
+### `API-AI-001`: 24/7 AI Veterinary Triage Chat
+* **Method & Path:** `POST /api/v1/ai/triage-chat`
+* **Purpose:** Stream real-time veterinary symptom assessment, differential possibilities, home support guidance, and emergency red-flag escalation using Google Gemini streaming API.
+* **Protocol:** Server-Sent Events (`text/event-stream`).
+* **Authentication:** Optional Bearer JWT (Authenticated: 15 sessions/hour; Guest: 3 sessions/24 hours per IP).
+* **Request Body:**
+  ```json
+  {
+    "messages": [
+      { "role": "user", "content": "My dog has been scratching more than usual for two days." }
+    ],
+    "petId": "optional-uuid"
+  }
+  ```
+* **Response Stream (200 OK / text/event-stream):**
+  ```text
+  data: {"text": "Hello, I am Vetopia AI...", "isEmergency": false}
+
+  data: {"text": " What you should observe...", "isEmergency": false}
+
+  data: [DONE]
+  ```
+* **Emergency Response:**
+  ```text
+  data: {"text": "[EMERGENCY_DETECTED] This is a critical medical emergency...", "isEmergency": true}
+
+  data: [DONE]
+  ```
+* **Failure Fallback:**
+  ```text
+  data: {"error": "AI assistant unavailable. If this is an emergency, please contact an in-person clinic immediately.", "isEmergency": true}
+
+  data: [DONE]
+  ```
+* **Related Screen:** `AIChatScreen` (`app/ai/chat.tsx`).
+
+
 

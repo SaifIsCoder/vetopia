@@ -10,11 +10,11 @@ const getEnv = (key: string, fallback: string): string => {
 
 const serverSupabaseUrl = getEnv(
   'EXPO_PUBLIC_SUPABASE_URL',
-  'https://fkhsqstkkksaerpjoczi.supabase.co',
+  'https://oqqdznxlqnscvhlluiit.supabase.co',
 );
 const serverSupabaseAnonKey = getEnv(
   'EXPO_PUBLIC_SUPABASE_ANON_KEY',
-  'sb_publishable_82bHaIpBP9cTL2efnWLldA_ilGDcx83',
+  'sb_publishable_e0fCqz8GCYtQqIG_LvrG8w_MDI6mGx3',
 );
 
 export const defaultSupabase: SupabaseClient = createClient(
@@ -338,6 +338,42 @@ export async function handleTelemedicineTokenRequest(params: {
     });
 
     const token = await at.toJwt();
+
+    // Trigger #3: Doctor entered consultation room -> Notify pet parent
+    if (isVet) {
+      try {
+        await supabaseClient.from('notifications').insert({
+          user_id: appt.pet_parent_id,
+          type: 'doctor_entered_consultation',
+          title: 'Doctor Has Joined Consultation',
+          body: `Dr. ${vetProfile?.name || 'Your veterinarian'} is in the consultation room. Please enter to begin.`,
+          data: {
+            kind: 'doctor_entered_consultation',
+            appointmentId: appt.id,
+            deepLink: `vetopia://consult/${appt.id}`,
+          },
+          pushed_at: new Date().toISOString(),
+        });
+
+        const { pushDispatcher } = await import('./pushNotificationDispatcher');
+        await pushDispatcher.dispatchPushToUser(appt.pet_parent_id, {
+          title: 'Doctor Has Joined Consultation',
+          body: `Dr. ${vetProfile?.name || 'Your veterinarian'} is in the consultation room. Please enter to begin.`,
+          data: {
+            kind: 'doctor_entered_consultation',
+            appointmentId: appt.id,
+            deepLink: `vetopia://consult/${appt.id}`,
+          },
+          priority: 'high',
+          channelId: 'consultations',
+        });
+      } catch (notifErr) {
+        console.warn(
+          '[TelemedicineTokenHandler] Doctor-entered notification dispatch failed:',
+          notifErr,
+        );
+      }
+    }
 
     return {
       statusCode: 200,

@@ -206,9 +206,9 @@
 * **Actor:** Pet Parent
 * **Priority:** P0 (Must Have)
 * **Preconditions:** User is logged in or in guest triage mode.
-* **Main Behavior:** Pet parent describes pet symptoms. Mobile client sends message history to AI gateway. Backend streams response from Google Gemini 2.5 Flash with clinical safety system prompt. If red-flag symptoms are detected (e.g., gastric torsion, difficulty breathing, seizures, poisoning), system immediately renders prominent Red-Flag Emergency Banner with direct dial to emergency vet.
+* **Main Behavior:** Pet parent describes pet symptoms. Mobile client sends message history to AI gateway. Backend streams response from Google Gemini 3.8 Flash (with Gemini 3.7 Flash fallback; reconciled from legacy Gemini 2.5 Flash sunset by Google) with clinical safety system prompt. If red-flag symptoms are detected (e.g., gastric torsion, difficulty breathing, seizures, poisoning), system immediately renders prominent Red-Flag Emergency Banner with direct dial to verified emergency vet (or nearest emergency veterinary hospital guidance if direct dial is unconfigured).
 * **Safety Boundary:** AI explicitly states it cannot prescribe medications or replace an in-person physical exam.
-* **Error Behavior:** Upstream gateway timeout (504) displays fallback message: "AI assistant unavailable. If this is an emergency, please contact an in-person clinic immediately."
+* **Error Behavior:** Upstream gateway timeout (504) displays fallback message: "AI assistant unavailable. If this is an emergency, please contact an emergency veterinary hospital immediately."
 * **Screen:** `AIChatbotScreen` (`app/ai/chat.tsx`)
 * **API:** `POST /api/v1/ai/triage-chat` (Server-Sent Events streaming)
 * **Test:** Submit emergency prompt ("dog ate dark chocolate and is shaking"); verify red-flag banner renders.

@@ -94,3 +94,41 @@ export async function setBiometricsPreference(enabled: boolean): Promise<void> {
     console.warn('[Biometrics] Failed to save biometric preference:', error);
   }
 }
+
+/**
+ * Enables or disables biometric login with mandatory local authentication when enabling.
+ */
+export async function toggleBiometrics(
+  enable: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  if (Platform.OS === 'web') {
+    return { success: false, error: 'Biometric authentication is not supported on web.' };
+  }
+
+  if (enable) {
+    const status = await checkBiometricsAvailability();
+    if (!status.isAvailable) {
+      return {
+        success: false,
+        error: 'Biometric hardware is not available or no biometrics are enrolled on this device.',
+      };
+    }
+
+    const authenticated = await authenticateWithBiometrics(
+      `Confirm your ${status.biometricType} to enable biometric login`,
+    );
+
+    if (!authenticated) {
+      return {
+        success: false,
+        error: 'Biometric confirmation was cancelled or failed.',
+      };
+    }
+
+    await setBiometricsPreference(true);
+    return { success: true };
+  } else {
+    await setBiometricsPreference(false);
+    return { success: true };
+  }
+}

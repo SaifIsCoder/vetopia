@@ -385,9 +385,113 @@ Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 33 static
 
 ---
 
-### 8. Next Phase
-**Phase 9 — MVP-08 Push & In-App Notifications**  
-*Scope:* Remote push notifications infrastructure (Expo Push Notifications / FCM / APNs integration), notification token registration (`public.device_tokens`), in-app notification center (`public.notifications`), appointment reminders (T-24h, T-1h, T-15m), and clinical message arrival alerts.
+---
+
+### 8. Phase 9 Implementation Complete — MVP-08 Notifications & Push Delivery
+* **Implementation Status:** `CLOSED / COMPLETED`
+* **Execution Date:** 2026-09-26
+* **Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · `expo-notifications` · Supabase Auth / PostgreSQL RLS
+* **Delivered Scope:**
+  * `supabase/migrations/20260926200000_notifications_schema.sql`:
+    * Created `public.device_tokens` table with multi-device token uniqueness `(user_id, token)`, platform validation, active flag, and timestamps.
+    * Created `public.notifications` table with typed alerts, JSONB deep-link metadata, and read/unread tracking.
+    * Created `public.appointment_reminders` table to enforce idempotency on 15-minute consultation countdowns.
+    * Strict RLS hardening: `device_tokens` restricted to `auth.uid()`, `notifications` read/update restricted to `auth.uid()`, direct client insert/delete revoked.
+    * Implemented `SECURITY DEFINER` RPCs: `register_device_token`, `deactivate_device_token`, `mark_notification_read`, `mark_all_notifications_read`, `get_unread_notification_count`, `notify_doctor_entered_consultation`, `process_appointment_reminders`.
+    * Implemented database trigger `trg_appointment_scheduled_notification` automatically notifying pet parent and assigned vet upon booking.
+    * Integrated message recipient notification trigger in `send_direct_message`.
+    * Integrated prescription recipient notification trigger in `create_prescription`.
+  * `src/types/notification.ts`: Comprehensive domain types (`NotificationType`, `DevicePlatform`, `DeviceToken`, `AppNotification`, `NotificationPayloadData`, `PushMessagePayload`).
+  * `src/lib/notifications/notificationService.ts`: Client service handling `expo-notifications` permissions, Android channels (`consultations` High priority, `messages_general` Normal priority), token registration RPC, token deactivation, in-app notifications query, read state sync, and deep link route resolution.
+  * `src/hooks/useNotifications.ts`: TanStack Query hooks with automatic cache invalidation (`useNotifications`, `useUnreadNotificationCount`, `useMarkNotificationRead`, `useMarkAllNotificationsRead`, `useRegisterDeviceToken`).
+  * `src/server/pushNotificationDispatcher.ts`: Server-side push dispatcher posting to Expo Push Gateway (`https://exp.host/--/api/v2/push/send`), deactivating expired tokens (`DeviceNotRegistered`), and executing the 15-minute consultation reminder worker.
+  * `src/server/server.ts`: Added `POST /api/v1/notifications/token` endpoint and `POST /api/v1/notifications/reminders/run` worker trigger with periodic 60s background scheduling.
+  * `src/server/telemedicineTokenHandler.ts`: Integrated doctor entry trigger (`doctor_entered_consultation`) when consulting doctor requests room token.
+  * `app/notifications.tsx` (`SCR-NOTIF-001` / `FR-NOTIF-001`): In-app notification center screen with chronological alerts list, type-differentiated icons, unread badges, mark-all-read action, pull-to-refresh, empty state, and deep link navigation.
+  * `src/components/notifications/`:
+    * `NotificationItem.tsx`: Alert row with event icon, title, body, relative timestamp, unread dot, and chevron.
+    * `NotificationBell.tsx`: Header bell icon with dynamic unread counter badge navigating to `/notifications`.
+  * `app/(tabs)/index.tsx`: Integrated `NotificationBell` in Home screen header.
+  * `app/_layout.tsx`: Root-level integration of push token registration on authentication, cold-start tap detection (`getLastNotificationResponseAsync`), background/foreground response listener, and authentication boundary preservation.
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (27 suites, 282 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 34 static routes)
+```
+
+---
+
+### 9. Current Phase Status: Phase 10 — MVP-09 24/7 AI Triage Assistant [AUDIT REMEDIATED & VERIFIED]
+* **Scope Remediated & Completed:**
+  * `FR-AI-001` (Symptom Assessment & Emergency Detection) remediated against all Phase 10 audit findings.
+  * **Model Reconciliation:** Reconciled to Google Gemini 3.8 Flash (`gemini-3.8-flash`) as primary approved production model (with `gemini-3.7-flash` as explicit fallback), resolving the legacy `gemini-2.5-flash` Google sunset 404 error.
+  * **API URL Normalization:** Fixed API URL construction in `aiService.ts` (`getEndpointUrl`) to eliminate duplicate `/api/v1` path segments regardless of base URL formatting.
+  * **Emergency Veterinary Action:** Removed hardcoded `tel:911` human dispatch default. Replaced with verified veterinary emergency dialer (when configured) or nearest 24-hour veterinary emergency hospital guidance advisory + direct video specialist escalation (`/vets`).
+  * **Rate Limiting & Anti-Spoofing:** Enforces sliding rate limits (15/hr auth, 3/24h guest). Replaced unvalidated `X-Forwarded-For` trust with `resolveClientIp(req)`, honoring forwarding headers only when `TRUST_PROXY` is explicitly configured. Memory pruning prevents unbounded leak.
+  * **Streaming Disconnect Cancellation:** Added client disconnect listener (`req.on('close')`) linked to `AbortController`, terminating upstream Gemini requests immediately upon disconnect.
+  * **Client Dual Timeout:** Added 15s connection establishment timeout and 15s chunk inactivity timeout to prevent indefinite client hanging.
+  * **Integration & Regression Testing:** Added comprehensive route integration tests (`tests/unit/ai-triage-integration.test.ts`), client normalization tests (`tests/unit/ai-service-client.test.ts`), and live provider smoke tests (`tests/unit/gemini-provider-smoke.test.ts`).
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Integration Tests: PASS (32 suites, 334 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS, Android, Web - 34 static routes)
+Real Gemini Live Smoke Suite: PASS (gemini-3.8-flash verified)
+Physical Device UX / Dialing: PENDING PHYSICAL DEVICE VERIFICATION (Simulated in automated tests)
+```
+
+---
+
+### 10. Phase 11 Implementation Complete — MVP-10 Settings & Biometrics
+* **Implementation Status:** `CLOSED / COMPLETED`
+* **Execution Date:** 2026-10-04
+* **Target Environment:** Expo SDK 57 · React Native 0.86 · React 19.x · `expo-local-authentication` · `expo-secure-store` · Supabase Auth / PostgreSQL RLS
+* **Delivered Scope:**
+  * `app/settings/profile.tsx` (`SCR-SET-001` / `FR-SET-001` / `FR-PROF-001`):
+    * Production-quality Settings & Profile screen following Vetopia design system.
+    * User profile card with avatar, full name, email, phone number, and verified role badge.
+    * Edit profile modal with real-time input validation (full name length 2-100, E.164-compatible phone validation) and read-only protected RBAC/system identifiers.
+    * Biometric authentication toggle with native hardware detection (`Face ID` / `Touch ID` / `Biometrics` / `Unavailable`), prompting device local biometric confirmation before enabling.
+    * Security & session section displaying active Supabase JWT session status and triggering self-service password reset emails via `authService.requestPasswordReset`.
+    * Notification preference switches persisting alerts for consultation reminders, clinical messages, prescription updates, and announcements.
+    * Clinical and legal triage disclaimer and application version metadata.
+    * Destructive confirmation dialog for sign out, clearing auth session, isolated SecureStore credentials, and triggering navigation redirection to `/(auth)/welcome`.
+  * `src/lib/profile/profileService.ts`:
+    * Service handling profile updates targeting `public.profiles`.
+    * Strict input validation on `fullName` and `phone`.
+    * Protection against unauthorized mutations of system/RBAC fields (`id`, `email`, `role`, `roles`, `onboarded`).
+    * Direct synchronization with `useAuthStore` and query cache invalidation (`queryClient.invalidateQueries`).
+  * `src/hooks/useProfile.ts`:
+    * React hook encapsulating profile mutation state, error normalization, and reactive updates.
+  * `src/lib/auth/biometrics.ts`:
+    * Enhanced with `toggleBiometrics(enable)` enforcing local hardware verification prior to updating `SecureStore` preference key `vetopia_biometrics_enabled`.
+    * Safe disabling without credential loss or session state corruption.
+  * `src/lib/notifications/notificationPreferences.ts`:
+    * SecureStore-backed preference store for consultation reminders, clinical messages, and prescription alerts with safe defaults and graceful fallback.
+  * `app/(tabs)/care.tsx`:
+    * Connected Settings & Biometrics quick link card to `/settings/profile` with accessible navigation attributes.
+* **Automated Verification Results:**
+```text
+TypeScript (tsc --noEmit): PASS (0 errors)
+ESLint (eslint .): PASS (0 errors, 0 warnings)
+Prettier (prettier --check .): PASS (100% compliant)
+Jest Unit & Component Tests: PASS (35 suites, 372 tests)
+Expo Export (npx expo export --no-bytecode): PASS (iOS: 3.8MB, Android: 4.1MB, Web: 3.8MB - 34 static routes)
+Real Gemini Live Smoke Suite: PASS (gemini-3.8-flash verified)
+Physical Device Verification: PENDING PHYSICAL DEVICE VERIFICATION (Hardware biometric sensors & Phase 10 dialer)
+```
+
+---
+
+### 11. Next Phase
+**Phase 12 — MVP-11 System Hardening, End-to-End Polish & Release Preparation**  
+*Scope:* Comprehensive integration testing, performance profiling, final waiver reviews, and app store release candidate bundling.
+
 
 
 

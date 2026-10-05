@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { colors } from '../../theme/colors';
 import { radii } from '../../theme/radii';
@@ -11,7 +11,8 @@ export type BadgeVariant = 'verified' | 'scheduled' | 'completed' | 'cancelled' 
 export interface BadgeProps {
   variant: BadgeVariant;
   label?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 const defaultLabels: Record<BadgeVariant, string> = {
@@ -22,12 +23,17 @@ const defaultLabels: Record<BadgeVariant, string> = {
   pending: 'Pending Verification',
 };
 
-export const Badge: React.FC<BadgeProps> = ({ variant, label = defaultLabels[variant], style }) => {
+export const Badge: React.FC<BadgeProps> = ({
+  variant,
+  label = defaultLabels[variant],
+  style,
+  testID,
+}) => {
   const isVerified = variant === 'verified';
   const textColor = textColors[variant];
 
   return (
-    <View style={[styles.badge, variantStyles[variant], style]}>
+    <View testID={testID} style={[styles.badge, variantStyles[variant], style]}>
       {isVerified ? <Check size={12} color={textColor} style={styles.icon} /> : null}
       <Text variant="caption" color={textColor} style={styles.label}>
         {label}

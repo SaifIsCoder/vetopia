@@ -1,16 +1,20 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Sparkles, Calendar, Stethoscope, PawPrint } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
 import { Text } from '../../src/components/ui/Text';
 import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
 import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
 
+import { NotificationBell } from '../../src/components/notifications/NotificationBell';
+
 export default function HomeScreen() {
+  const router = useRouter();
+
   return (
     <Screen scrollable>
       {/* Brand Header */}
@@ -23,23 +27,31 @@ export default function HomeScreen() {
             Vetopia
           </Heading>
         </View>
-        <Badge variant="verified" label="Foundation" />
+        <NotificationBell />
       </View>
 
       {/* Emergency & AI Triage Banner Shell */}
-      <Card style={styles.triageBanner} elevated={false}>
-        <View style={styles.bannerIconContainer}>
-          <Sparkles size={20} color={colors.ink} />
-        </View>
-        <View style={styles.bannerContent}>
-          <Heading level={4} style={styles.bannerTitle}>
-            24/7 AI Veterinary Triage
-          </Heading>
-          <Text variant="bodySm" color={colors.inkSoft}>
-            Instant emergency symptom assessment & guidance.
-          </Text>
-        </View>
-      </Card>
+      <TouchableOpacity
+        onPress={() => router.push('/ai/chat')}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Open 24/7 AI Veterinary Triage"
+        testID="banner-ai-triage"
+      >
+        <Card style={styles.triageBanner} elevated={false}>
+          <View style={styles.bannerIconContainer}>
+            <Sparkles size={20} color={colors.ink} />
+          </View>
+          <View style={styles.bannerContent}>
+            <Heading level={4} style={styles.bannerTitle}>
+              24/7 AI Veterinary Triage
+            </Heading>
+            <Text variant="bodySm" color={colors.inkSoft}>
+              Instant emergency symptom assessment & guidance.
+            </Text>
+          </View>
+        </Card>
+      </TouchableOpacity>
 
       {/* Quick Status Cards */}
       <View style={styles.section}>
