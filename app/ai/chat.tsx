@@ -88,7 +88,7 @@ export default function AIChatScreen({ emergencyNumber }: AIChatScreenProps = {}
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
       >
         {/* Header Bar */}
         <View style={styles.header}>
@@ -153,7 +153,7 @@ export default function AIChatScreen({ emergencyNumber }: AIChatScreenProps = {}
         ) : null}
 
         {/* Clinical Disclaimer Banner */}
-        <DisclaimerBanner />
+        {/* <DisclaimerBanner /> */}
 
         {/* Emergency Red-Flag Alert Banner (renders dynamically on emergency detection) */}
         {isEmergency ? <EmergencyAlertCard emergencyNumber={emergencyNumber} /> : null}

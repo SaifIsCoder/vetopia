@@ -14,6 +14,7 @@ import {
   telemedicineService,
   TelemedicineTokenResponseData,
 } from '../../src/lib/telemedicine/telemedicineService';
+import { useLiveKitRoom } from '../../src/lib/telemedicine/useLiveKitRoom';
 import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 
@@ -26,17 +27,24 @@ export default function ConsultRoomScreen() {
   const { data: appointment, isLoading, isError, error } = useAppointment(id || '');
   const completeMutation = useCompleteAppointment();
 
-  // Call hardware toggles
-  const [isMicMuted, setIsMicMuted] = useState(false);
-  const [isVideoMuted, setIsVideoMuted] = useState(false);
-  const [isFrontCamera, setIsFrontCamera] = useState(true);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-
   // Connection & lifecycle states
   const [isConnecting, setIsConnecting] = useState(false);
   const [tokenData, setTokenData] = useState<TelemedicineTokenResponseData | null>(null);
-  const [isReconnecting, setIsReconnecting] = useState(false);
   const [reconnectSeconds, setReconnectSeconds] = useState(0);
+
+  // LiveKit WebRTC Session Hook
+  const liveKit = useLiveKitRoom({
+    serverUrl: tokenData?.server_url,
+    token: tokenData?.token,
+    autoConnect: true,
+    isVideoEnabled: appointment?.mode !== 'audio',
+    isAudioEnabled: true,
+    onError: (err) => {
+      console.warn('[ConsultRoom] LiveKit error:', err);
+    },
+  });
+
+  const isReconnecting = liveKit.connectionState === 'reconnecting';
 
   // Device permissions
   const [hasPermissions, setHasPermissions] = useState(true);
@@ -60,6 +68,19 @@ export default function ConsultRoomScreen() {
   // Connect to LiveKit Room
   const handleEnterConsultation = async () => {
     if (!id) return;
+
+    if (isVet && user?.isVetVerified === false) {
+      Alert.alert(
+        'License Verification Required',
+        'Your veterinarian account is pending license verification. You must verify your credentials before entering consultation rooms.',
+        [
+          { text: 'Go to Dashboard', onPress: () => router.replace('/vet/dashboard') },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+
     setIsConnecting(true);
 
     try {
@@ -89,6 +110,7 @@ export default function ConsultRoomScreen() {
             style: 'destructive',
             onPress: async () => {
               try {
+                await liveKit.disconnect();
                 await completeMutation.mutateAsync(id);
                 setTokenData(null);
                 Alert.alert(
@@ -100,8 +122,8 @@ export default function ConsultRoomScreen() {
                       onPress: () => router.replace(`/consult/${id}/prescription`),
                     },
                     {
-                      text: 'Return to Hub',
-                      onPress: () => router.replace('/(tabs)/appointments'),
+                      text: 'Return to Dashboard',
+                      onPress: () => router.replace('/vet/dashboard'),
                     },
                   ],
                 );
@@ -125,7 +147,8 @@ export default function ConsultRoomScreen() {
           {
             text: 'Leave Room',
             style: 'destructive',
-            onPress: () => {
+            onPress: async () => {
+              await liveKit.disconnect();
               setTokenData(null);
               router.replace('/(tabs)/appointments');
             },
@@ -133,13 +156,16 @@ export default function ConsultRoomScreen() {
         ],
       );
     }
-  }, [id, isVet, completeMutation, router]);
+  }, [id, isVet, completeMutation, router, liveKit]);
 
   // Retry connection
   const handleRetryConnection = () => {
-    setIsReconnecting(false);
     setReconnectSeconds(0);
-    handleEnterConsultation();
+    if (tokenData?.server_url && tokenData?.token) {
+      liveKit.connect(tokenData.server_url, tokenData.token);
+    } else {
+      handleEnterConsultation();
+    }
   };
 
   // 1. Loading State
@@ -207,22 +233,25 @@ export default function ConsultRoomScreen() {
         isVet={isVet}
         participantName={tokenData.participant_name}
         remoteParticipantName={
-          isVet
+          liveKit.remoteParticipantName ||
+          (isVet
             ? appointment.pet_name
               ? `${appointment.pet_name}'s Family`
               : 'Pet Parent'
-            : appointment.vet?.name || 'Dr. Veterinarian'
+            : appointment.vet?.name || 'Dr. Veterinarian')
         }
-        isMicMuted={isMicMuted}
-        isVideoMuted={appointment.mode === 'audio' ? true : isVideoMuted}
-        isFrontCamera={isFrontCamera}
-        isSpeakerOn={isSpeakerOn}
+        localVideoTrack={liveKit.localVideoTrack}
+        remoteVideoTrack={liveKit.remoteVideoTrack}
+        isMicMuted={liveKit.isMicMuted}
+        isVideoMuted={appointment.mode === 'audio' ? true : liveKit.isVideoMuted}
+        isFrontCamera={liveKit.isFrontCamera}
+        isSpeakerOn={liveKit.isSpeakerOn}
         isReconnecting={isReconnecting}
         reconnectSeconds={reconnectSeconds}
-        onToggleMic={() => setIsMicMuted((prev) => !prev)}
-        onToggleVideo={() => setIsVideoMuted((prev) => !prev)}
-        onFlipCamera={() => setIsFrontCamera((prev) => !prev)}
-        onToggleSpeaker={() => setIsSpeakerOn((prev) => !prev)}
+        onToggleMic={liveKit.toggleMicrophone}
+        onToggleVideo={liveKit.toggleCamera}
+        onFlipCamera={liveKit.flipCamera}
+        onToggleSpeaker={liveKit.toggleSpeaker}
         onEndCall={handleEndCall}
         onRetryConnection={handleRetryConnection}
       />
@@ -234,18 +263,18 @@ export default function ConsultRoomScreen() {
     <WaitingRoomView
       appointment={appointment}
       isVet={isVet}
-      isMicMuted={isMicMuted}
-      isVideoMuted={appointment.mode === 'audio' ? true : isVideoMuted}
-      isFrontCamera={isFrontCamera}
-      isSpeakerOn={isSpeakerOn}
+      isMicMuted={liveKit.isMicMuted}
+      isVideoMuted={appointment.mode === 'audio' ? true : liveKit.isVideoMuted}
+      isFrontCamera={liveKit.isFrontCamera}
+      isSpeakerOn={liveKit.isSpeakerOn}
       hasPermissions={hasPermissions}
       permissionError={permissionError}
-      onToggleMic={() => setIsMicMuted((prev) => !prev)}
-      onToggleVideo={() => setIsVideoMuted((prev) => !prev)}
-      onFlipCamera={() => setIsFrontCamera((prev) => !prev)}
-      onToggleSpeaker={() => setIsSpeakerOn((prev) => !prev)}
+      onToggleMic={liveKit.toggleMicrophone}
+      onToggleVideo={liveKit.toggleCamera}
+      onFlipCamera={liveKit.flipCamera}
+      onToggleSpeaker={liveKit.toggleSpeaker}
       onEnterConsultation={handleEnterConsultation}
-      onExit={() => router.replace('/(tabs)/appointments')}
+      onExit={() => router.replace(isVet ? '/vet/dashboard' : '/(tabs)/appointments')}
       onRetryPermissions={() => {
         setHasPermissions(true);
         setPermissionError(null);

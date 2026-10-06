@@ -102,6 +102,31 @@ export default function CreatePrescriptionScreen() {
     );
   }
 
+  // License Verification Guard: Must be verified to issue legal prescriptions
+  if (user?.isVetVerified === false) {
+    return (
+      <Screen style={styles.container}>
+        <EmptyState
+          title="License Verification Required"
+          description="Your veterinary medical license is pending verification. Only verified veterinarians can issue digital prescriptions."
+          icon={<AlertCircle size={48} color={colors.warning} />}
+        />
+        <Button
+          title="Go to Doctor Portal"
+          onPress={() => router.replace('/vet/dashboard')}
+          variant="primary"
+          style={styles.actionBtn}
+        />
+        <Button
+          title="Go Back"
+          onPress={() => router.back()}
+          variant="outline"
+          style={styles.backBtn}
+        />
+      </Screen>
+    );
+  }
+
   // Precondition: Appointment MUST be completed
   if (appointment.status !== 'completed') {
     return (
@@ -118,8 +143,8 @@ export default function CreatePrescriptionScreen() {
           style={styles.actionBtn}
         />
         <Button
-          title="Back to Appointments"
-          onPress={() => router.replace('/(tabs)/appointments')}
+          title="Back to Dashboard"
+          onPress={() => router.replace('/vet/dashboard')}
           variant="outline"
         />
       </Screen>
@@ -142,8 +167,8 @@ export default function CreatePrescriptionScreen() {
           style={styles.actionBtn}
         />
         <Button
-          title="Back to Appointments"
-          onPress={() => router.replace('/(tabs)/appointments')}
+          title="Back to Dashboard"
+          onPress={() => router.replace('/vet/dashboard')}
           variant="outline"
         />
       </Screen>

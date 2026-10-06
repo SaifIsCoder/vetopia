@@ -78,6 +78,17 @@ export class AppointmentService {
           throw new ValidationError('This veterinarian is currently not accepting new bookings.');
         }
 
+        // Unverified / pending vet
+        if (
+          error.code === '55001' ||
+          error.message?.includes('not verified') ||
+          error.message?.includes('approved for clinical')
+        ) {
+          throw new ValidationError(
+            'This veterinarian is not verified or approved for clinical practice.',
+          );
+        }
+
         // Past slot / buffer error
         if (error.code === '22008' || error.message?.includes('past')) {
           throw new ValidationError(

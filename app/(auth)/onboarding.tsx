@@ -182,7 +182,7 @@ export default function OnboardingScreen() {
                 label="Professional Biography"
                 placeholder="Summary of your veterinary experience and special clinical interests..."
                 multiline
-                numberOfLines={3}
+                numberOfLines={5}
                 value={bio}
                 onChangeText={setBio}
                 leftIcon={<FileText size={20} color={colors.muted} />}

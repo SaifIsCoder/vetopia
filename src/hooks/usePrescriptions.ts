@@ -29,6 +29,14 @@ export function usePetPrescriptions(petId: string) {
   });
 }
 
+export function useMyPrescriptions() {
+  return useQuery<Prescription[], Error>({
+    queryKey: ['prescriptions', 'mine'],
+    queryFn: () => prescriptionService.getMyPrescriptions(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useCreatePrescription() {
   const queryClient = useQueryClient();
 

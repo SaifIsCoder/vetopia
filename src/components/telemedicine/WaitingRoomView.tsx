@@ -101,36 +101,76 @@ export const WaitingRoomView: React.FC<WaitingRoomViewProps> = ({
         </View>
       </View>
 
-      {/* Appointment & Doctor Card */}
+      {/* Appointment & Doctor / Patient Intake Card */}
       <Card style={styles.infoCard}>
-        <View style={styles.doctorRow}>
-          <Avatar name={vetName} size={48} />
-          <View style={styles.doctorInfo}>
-            <Text variant="headingSm" color={colors.ink}>
-              {vetName}
-            </Text>
-            <Text variant="caption" color={colors.primaryDark}>
-              {vetSpecialty} {appointment.vet?.flag || ''}
-            </Text>
+        {isVet ? (
+          <View style={styles.doctorRow}>
+            <Avatar name={petName} size={48} />
+            <View style={styles.doctorInfo}>
+              <Text variant="headingSm" color={colors.ink}>
+                Patient: {petName}
+                {appointment.species ? ` (${appointment.species})` : ''}
+              </Text>
+              <Text variant="caption" color={colors.primaryDark}>
+                {appointment.breed || 'Breed Unspecified'} •{' '}
+                {appointment.pet_age || 'Age Unspecified'}
+              </Text>
+            </View>
+            <Badge
+              variant={isVideoMode ? 'scheduled' : 'pending'}
+              label={isVideoMode ? 'Video Visit' : 'Audio Visit'}
+            />
           </View>
-          <Badge
-            variant={isVideoMode ? 'scheduled' : 'pending'}
-            label={isVideoMode ? 'Video Visit' : 'Audio Visit'}
-          />
-        </View>
+        ) : (
+          <View style={styles.doctorRow}>
+            <Avatar name={vetName} size={48} />
+            <View style={styles.doctorInfo}>
+              <Text variant="headingSm" color={colors.ink}>
+                {vetName}
+              </Text>
+              <Text variant="caption" color={colors.primaryDark}>
+                {vetSpecialty} {appointment.vet?.flag || ''}
+              </Text>
+            </View>
+            <Badge
+              variant={isVideoMode ? 'scheduled' : 'pending'}
+              label={isVideoMode ? 'Video Visit' : 'Audio Visit'}
+            />
+          </View>
+        )}
 
         <View style={styles.metaDivider} />
 
         <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Heart size={14} color={colors.muted} />
-            <Text variant="caption" color={colors.inkSoft}>
-              Patient:{' '}
-              <Text variant="caption" color={colors.ink} style={styles.bold}>
-                {petName}
+          {!isVet && (
+            <View style={styles.metaItem}>
+              <Heart size={14} color={colors.muted} />
+              <Text variant="caption" color={colors.inkSoft}>
+                Patient:{' '}
+                <Text variant="caption" color={colors.ink} style={styles.bold}>
+                  {petName}
+                </Text>
               </Text>
-            </Text>
-          </View>
+            </View>
+          )}
+
+          {isVet && appointment.urgency && (
+            <View style={styles.metaItem}>
+              <Text variant="caption" color={colors.muted}>
+                Urgency:
+              </Text>
+              <Text
+                variant="caption"
+                style={[
+                  styles.bold,
+                  appointment.urgency === 'High' ? styles.urgencyHighText : styles.urgencyText,
+                ]}
+              >
+                {appointment.urgency}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.metaItem}>
             <Calendar size={14} color={colors.muted} />
             <Text variant="caption" color={colors.inkSoft}>
@@ -144,6 +184,28 @@ export const WaitingRoomView: React.FC<WaitingRoomViewProps> = ({
             </Text>
           </View>
         </View>
+
+        {isVet && appointment.symptoms ? (
+          <View style={styles.intakeSymptomsRow}>
+            <Text variant="caption" color={colors.muted}>
+              Symptoms:{' '}
+            </Text>
+            <Text variant="caption" color={colors.inkSoft} numberOfLines={2} style={{ flex: 1 }}>
+              {appointment.symptoms}
+            </Text>
+          </View>
+        ) : null}
+
+        {isVet && appointment.medications ? (
+          <View style={styles.intakeSymptomsRow}>
+            <Text variant="caption" color={colors.muted}>
+              Medications:{' '}
+            </Text>
+            <Text variant="caption" color={colors.inkSoft} numberOfLines={2} style={{ flex: 1 }}>
+              {appointment.medications}
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
       {/* Permission Error Banner */}
@@ -374,5 +436,19 @@ const styles = StyleSheet.create({
   joinButton: {
     width: '100%',
     marginBottom: spacing.md,
+  },
+  intakeSymptomsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  urgencyText: {
+    color: colors.primaryDark,
+  },
+  urgencyHighText: {
+    color: colors.destructive,
   },
 });

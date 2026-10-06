@@ -272,6 +272,59 @@ export class PrescriptionService {
       throw new ApiError(err?.message || 'Failed to check appointment prescription.', 500);
     }
   }
+
+  /**
+   * Retrieve all prescriptions accessible to the authenticated user.
+   * RLS automatically limits to the user's pets or consults.
+   */
+  public async getMyPrescriptions(): Promise<Prescription[]> {
+    try {
+      const { data, error } = await supabase
+        .from('prescriptions')
+        .select(
+          `
+          *,
+          items:prescription_items(*),
+          vet:vet_profiles (
+            id,
+            name,
+            specialty,
+            flag,
+            country,
+            rating,
+            verified
+          ),
+          pet:pets (
+            id,
+            name,
+            species,
+            breed,
+            age,
+            weight_kg
+          ),
+          appointment:appointments (
+            id,
+            starts_at,
+            ends_at,
+            mode,
+            status
+          )
+        `,
+        )
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+
+      return (data || []) as Prescription[];
+    } catch (err: any) {
+      if (err instanceof ValidationError || err instanceof ApiError) {
+        throw err;
+      }
+      throw new ApiError(err?.message || 'Failed to load user prescriptions.', 500);
+    }
+  }
 }
 
 export const prescriptionService = new PrescriptionService();

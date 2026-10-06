@@ -129,6 +129,20 @@ export default function BookingScreen() {
       );
       return;
     }
+    if (!vet || !vet.verified) {
+      Alert.alert(
+        'Doctor Verification Pending',
+        'This veterinarian is pending administrative verification and cannot accept bookings.',
+      );
+      return;
+    }
+    if (!vet.accepting) {
+      Alert.alert(
+        'Doctor Unavailable',
+        'This veterinarian is currently not accepting new consultations.',
+      );
+      return;
+    }
     if (!selectedSlot) {
       Alert.alert('Select a Slot', 'Please choose an available consultation time slot.');
       return;
@@ -167,6 +181,22 @@ export default function BookingScreen() {
   // Step 4: Atomic Server-Side Reservation
   const handleConfirmBooking = async () => {
     if (!vet || !selectedSlot || !activePetId) return;
+
+    if (!vet.verified) {
+      Alert.alert(
+        'Doctor Verification Pending',
+        'This veterinarian is pending administrative verification and cannot accept bookings.',
+      );
+      return;
+    }
+
+    if (!vet.accepting) {
+      Alert.alert(
+        'Doctor Unavailable',
+        'This veterinarian is currently not accepting new consultations.',
+      );
+      return;
+    }
 
     try {
       const receipt = await bookAppointmentMutation.mutateAsync({
@@ -920,9 +950,24 @@ export default function BookingScreen() {
           </Text>
         </View>
 
-        {!vet.accepting ? (
+        {!vet.verified ? (
+          <Card style={styles.notAcceptingCard} testID="card-vet-unverified">
+            <View style={styles.notAcceptingRow}>
+              <AlertCircle size={28} color={colors.destructive} style={styles.notAcceptingIcon} />
+              <View style={styles.notAcceptingTextCol}>
+                <Text variant="headingSm" color={colors.destructive}>
+                  Doctor Verification Pending
+                </Text>
+                <Text variant="bodySm" color={colors.inkSoft} style={styles.notAcceptingDesc}>
+                  This veterinarian is pending administrative verification. Consultations cannot be
+                  booked until their medical license is authenticated.
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : !vet.accepting ? (
           // Error Behavior (FR-VET-002): Doctor not accepting patients
-          <Card style={styles.notAcceptingCard}>
+          <Card style={styles.notAcceptingCard} testID="card-vet-not-accepting">
             <View style={styles.notAcceptingRow}>
               <AlertCircle size={28} color={colors.destructive} style={styles.notAcceptingIcon} />
               <View style={styles.notAcceptingTextCol}>
@@ -1025,12 +1070,21 @@ export default function BookingScreen() {
 
       {/* Booking Action CTA */}
       <View style={styles.ctaContainer}>
-        {!vet.accepting ? (
+        {!vet.verified ? (
+          <Button
+            title="Doctor Verification Pending"
+            variant="outline"
+            disabled
+            style={styles.bookingButton}
+            testID="btn-vet-unverified"
+          />
+        ) : !vet.accepting ? (
           <Button
             title="Currently Not Accepting Bookings"
             variant="outline"
             disabled
             style={styles.bookingButton}
+            testID="btn-vet-not-accepting"
           />
         ) : (
           <Button

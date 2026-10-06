@@ -6,7 +6,7 @@ import {
   DaySchedule,
   TimeSlot,
 } from '../../types/vet';
-import { ApiError, NotFoundError, ValidationError } from '../api/errors';
+import { ApiError, AuthError, NotFoundError, ValidationError } from '../api/errors';
 
 /**
  * Format a Date to "HH:mm" (e.g. "09:00" or "14:30")
@@ -268,6 +268,12 @@ export class VetService {
     try {
       let query = supabase.from('vet_profiles').select('*');
 
+      // Pet Parent Discovery & Search (FR-VET-001):
+      // Enforced server-side / database-side:
+      // Exclude unverified, pending, rejected, or inactive veterinarians.
+      // Discovery and search only fetch registered, admin-approved, verified, and accepting vets.
+      query = query.eq('verified', true).eq('accepting', true);
+
       // Text search: matches name or specialty
       if (filters?.q && filters.q.trim()) {
         const term = filters.q.trim();
@@ -292,22 +298,6 @@ export class VetService {
       // Maximum consultation price filter
       if (filters?.max_price !== undefined && filters.max_price > 0) {
         query = query.lte('price_usd', filters.max_price);
-      }
-
-      // Accepting status filter
-      if (filters?.accepting_only === true) {
-        query = query.eq('accepting', true);
-      } else if (
-        !filters?.q &&
-        !filters?.specialty &&
-        !filters?.language &&
-        !filters?.country &&
-        filters?.max_price === undefined &&
-        filters?.accepting_only === undefined
-      ) {
-        // SRS FR-VET-001 Alternative Behavior:
-        // "Empty search query returns top-rated doctors currently accepting consults."
-        query = query.eq('accepting', true);
       }
 
       // Order by rating and reviews descending
@@ -403,7 +393,7 @@ export class VetService {
       const [vetRes, availRes] = await Promise.all([
         supabase
           .from('vet_profiles')
-          .select('slot_minutes, accepting, timezone')
+          .select('slot_minutes, accepting, timezone, verified')
           .eq('id', vetId)
           .maybeSingle(),
         supabase.from('vet_availability').select('*').eq('vet_id', vetId).order('weekday'),
@@ -417,7 +407,8 @@ export class VetService {
         throw new NotFoundError('Doctor not found.');
       }
 
-      if (vetRes.data.accepting === false) {
+      // Unverified or inactive doctors cannot have bookable schedules
+      if (vetRes.data.verified !== true || vetRes.data.accepting !== true) {
         return [];
       }
 
@@ -433,6 +424,58 @@ export class VetService {
     } catch (err: any) {
       if (err instanceof ApiError) throw err;
       throw new ApiError(err?.message || 'Failed to generate doctor schedule.', 500);
+    }
+  }
+
+  /**
+   * Fetch the current authenticated veterinarian's own profile.
+   */
+  public async getMyVetProfile(): Promise<VetProfile | null> {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user) {
+        return null;
+      }
+      const { data, error } = await supabase
+        .from('vet_profiles')
+        .select('*')
+        .eq('user_id', authData.user.id)
+        .maybeSingle();
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+      return (data as VetProfile) || null;
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(err?.message || 'Failed to load doctor profile.', 500);
+    }
+  }
+
+  /**
+   * Update the current authenticated veterinarian's practice settings (e.g. accepting status, price).
+   */
+  public async updateMyVetProfile(updates: Partial<VetProfile>): Promise<VetProfile> {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user) {
+      throw new AuthError('Authentication required.');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vet_profiles')
+        .update(updates)
+        .eq('user_id', authData.user.id)
+        .select('*')
+        .single();
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+      return data as VetProfile;
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof AuthError) throw err;
+      throw new ApiError(err?.message || 'Failed to update practice settings.', 500);
     }
   }
 }

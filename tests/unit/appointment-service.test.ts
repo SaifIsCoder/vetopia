@@ -189,6 +189,21 @@ describe('AppointmentService (MVP-04)', () => {
       );
     });
 
+    test('Maps unverified vet error (code 55001) to ValidationError', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValue({
+        data: null,
+        error: {
+          code: '55001',
+          message: 'Veterinarian is not verified or approved for clinical practice.',
+        },
+      });
+
+      await expect(appointmentService.bookAppointment(validDTO)).rejects.toThrow(ValidationError);
+      await expect(appointmentService.bookAppointment(validDTO)).rejects.toThrow(
+        'This veterinarian is not verified or approved for clinical practice.',
+      );
+    });
+
     test('Maps past slot error (code 22008) to ValidationError', async () => {
       (supabase.rpc as jest.Mock).mockResolvedValue({
         data: null,

@@ -1,0 +1,319 @@
+{
+  "info": {
+    "_postman_id": "b78b6680-994c-4734-912b-b5cb8842cecf",
+    "name": "Vetopia Mobile API",
+    "description": "Collection for testing all Vetopia Mobile Express backend endpoints and Supabase Auth helper.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "supabase_url",
+      "value": "https://oqqdznxlqnscvhlluiit.supabase.co",
+      "type": "string"
+    },
+    {
+      "key": "supabase_anon_key",
+      "value": "sb_publishable_e0fCqz8GCYtQqIG_LvrG8w_MDI6mGx3",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "appointment_id",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "type": "string"
+    },
+    {
+      "key": "pet_id",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Supabase Auth Helper",
+      "item": [
+        {
+          "name": "Login to get Bearer JWT Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json();",
+                  "    if (data.access_token) {",
+                  "        pm.collectionVariables.set('jwt_token', data.access_token);",
+                  "        console.log('jwt_token automatically saved into collection variables!');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{supabase_anon_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"your-password-here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
+              "host": ["{{supabase_url}}"],
+              "path": ["auth", "v1", "token"],
+              "query": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                }
+              ]
+            },
+            "description": "Authenticates against Supabase to get an access_token. The test script automatically saves it into {{jwt_token}}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "GET Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verifies that the Express server is up and responsive."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. AI Veterinary Triage",
+      "item": [
+        {
+          "name": "POST AI Triage Chat (Guest Mode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"My dog is coughing and not eating since morning. What should I monitor?\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/triage-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "triage-chat"]
+            },
+            "description": "Guest mode AI triage chat (3 sessions / 24 hours per IP). Streams Server-Sent Events (SSE)."
+          }
+        },
+        {
+          "name": "POST AI Triage Chat (Authenticated with Pet Context)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"petId\": \"{{pet_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"My cat is scratching her ears constantly. Is this an emergency?\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/triage-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "triage-chat"]
+            },
+            "description": "Authenticated AI triage chat (15 queries / hour). Validates pet profile ownership before injecting clinical context."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Telemedicine RTC",
+      "item": [
+        {
+          "name": "POST Generate Consultation Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"appointment_id\": \"{{appointment_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/telemedicine/token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "telemedicine", "token"]
+            },
+            "description": "Generates a short-lived LiveKit WebRTC JWT token for a scheduled consultation room. Enforces T-15m timing window and participant authorization."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Push Notifications",
+      "item": [
+        {
+          "name": "POST Register Device Push Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]\",\n  \"platform\": \"android\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "notifications", "token"]
+            },
+            "description": "Registers or updates an Expo device push token for the authenticated user."
+          }
+        },
+        {
+          "name": "POST Trigger 15-Min Reminder Worker",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/reminders/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "notifications", "reminders", "run"]
+            },
+            "description": "Scans appointments due in 15 minutes and enqueues push notifications."
+          }
+        },
+        {
+          "name": "POST Trigger Outbox Dispatch Pending",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/dispatch-pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "notifications", "dispatch-pending"]
+            },
+            "description": "Flushes pending transactional notifications to Expo Push API."
+          }
+        }
+      ]
+    }
+  ]
+}

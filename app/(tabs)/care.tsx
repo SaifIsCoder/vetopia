@@ -185,19 +185,28 @@ export default function CareScreen() {
           Clinical Records
         </Heading>
 
-        <Card style={styles.menuCard}>
-          <View style={styles.menuRow}>
-            <View style={styles.menuIconContainer}>
-              <FileText size={20} color={colors.ink} />
+        <TouchableOpacity
+          onPress={() => router.push('/prescriptions' as any)}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Digital Prescriptions Archive"
+          testID="btn-care-prescriptions"
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={styles.menuIconContainer}>
+                <FileText size={20} color={colors.ink} />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Digital Prescriptions Archive</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Medication regimens, dosage instructions & signed PDF exports
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
             </View>
-            <View style={styles.menuContent}>
-              <Heading level={4}>Digital Prescriptions Archive</Heading>
-              <Text variant="bodySm" color={colors.muted}>
-                MVP-06 Prescription history & PDF export (Phase 7)
-              </Text>
-            </View>
-          </View>
-        </Card>
+          </Card>
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => router.push('/ai/chat')}

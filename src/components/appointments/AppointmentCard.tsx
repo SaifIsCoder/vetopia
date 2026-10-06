@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Calendar, Clock, Video, Phone, MessageSquare, Pill, FilePlus } from 'lucide-react-native';
+import {
+  Calendar,
+  Clock,
+  Video,
+  Phone,
+  MessageSquare,
+  Pill,
+  FilePlus,
+  AlertTriangle,
+  PhoneCall,
+} from 'lucide-react-native';
 import { Appointment } from '../../types/appointment';
 import { Card } from '../ui/Card';
 import { Avatar } from '../ui/Avatar';
@@ -63,6 +73,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
 
   const { user, role } = useAuthStore();
   const isVet = user?.isVet === true || role === 'vet';
+  const isVerified = user?.isVetVerified !== false;
 
   const isScheduled = appointment.status === 'scheduled';
   const isCancelled = appointment.status === 'cancelled';
@@ -85,24 +96,57 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
     }
   };
 
+  const handleEnterRoom = () => {
+    if (isVet && user?.isVetVerified === false) {
+      Alert.alert(
+        'License Verification Required',
+        'Your medical license is pending verification. Please verify your license on the doctor dashboard before starting consultations.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+    router.push(`/consult/${appointment.id}`);
+  };
+
+  const handleCreatePrescription = () => {
+    if (isVet && user?.isVetVerified === false) {
+      Alert.alert(
+        'License Verification Required',
+        'Your medical license is pending verification. Only verified veterinarians can issue digital prescriptions.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+    router.push(`/consult/${appointment.id}/prescription`);
+  };
+
   return (
     <Card style={styles.card}>
-      {/* Top Header: Doctor info & Status */}
+      {/* Top Header: Patient info for Vet, Doctor info for Pet Parent */}
       <View style={styles.headerRow}>
-        <Avatar name={vetName} size={48} style={styles.avatar} />
+        <Avatar name={isVet ? petName : vetName} size={48} style={styles.avatar} />
 
         <View style={styles.infoCol}>
           <Text variant="headingSm" color={colors.ink} numberOfLines={1}>
-            {vetName}
+            {isVet ? `${petName}${petSpecies}` : vetName}
           </Text>
           <Text variant="caption" color={colors.primaryDark} numberOfLines={1}>
-            {vetSpecialty}
+            {isVet
+              ? `Patient Intake • ${appointment.pet_age ? `${appointment.pet_age} • ` : ''}${appointment.breed || 'Breed Unspecified'}`
+              : vetSpecialty}
           </Text>
-          {appointment.vet?.country ? (
+          {!isVet && appointment.vet?.country ? (
             <Text variant="caption" color={colors.inkSoft}>
               {appointment.vet.flag ? `${appointment.vet.flag} ` : ''}
               {appointment.vet.country}
             </Text>
+          ) : isVet && appointment.contact_phone ? (
+            <View style={styles.inlineContactRow}>
+              <PhoneCall size={11} color={colors.inkSoft} />
+              <Text variant="caption" color={colors.inkSoft}>
+                {appointment.contact_phone}
+              </Text>
+            </View>
           ) : null}
         </View>
 
@@ -137,16 +181,44 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           </View>
         </View>
 
-        {/* Patient & Format */}
+        {/* Patient / Format & Triage Urgency */}
         <View style={styles.detailRow}>
           <View style={styles.metaItem}>
             <Text variant="caption" color={colors.muted}>
-              Patient:
+              {isVet ? 'Urgency:' : 'Patient:'}
             </Text>
-            <Text variant="caption" color={colors.ink} style={styles.boldText}>
-              {petName}
-              {petSpecies}
-            </Text>
+            {isVet ? (
+              <View
+                style={[
+                  styles.urgencyBadge,
+                  appointment.urgency === 'High'
+                    ? styles.urgencyHigh
+                    : appointment.urgency === 'Medium'
+                      ? styles.urgencyMedium
+                      : styles.urgencyLow,
+                ]}
+              >
+                {appointment.urgency === 'High' && (
+                  <AlertTriangle size={10} color="#DC2626" style={{ marginRight: 2 }} />
+                )}
+                <Text
+                  variant="caption"
+                  style={[
+                    styles.urgencyText,
+                    appointment.urgency === 'High'
+                      ? styles.urgencyHighText
+                      : styles.urgencyStandardText,
+                  ]}
+                >
+                  {appointment.urgency || 'Standard'}
+                </Text>
+              </View>
+            ) : (
+              <Text variant="caption" color={colors.ink} style={styles.boldText}>
+                {petName}
+                {petSpecies}
+              </Text>
+            )}
           </View>
 
           <View style={styles.modeChip}>
@@ -173,6 +245,23 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
             </Text>
           </View>
         ) : null}
+
+        {/* Prior Medications snippet (clinical intake) */}
+        {isVet && appointment.medications ? (
+          <View style={styles.symptomsRow}>
+            <Text variant="caption" color={colors.muted}>
+              Medications:{' '}
+            </Text>
+            <Text
+              variant="caption"
+              color={colors.inkSoft}
+              numberOfLines={2}
+              style={styles.symptomsText}
+            >
+              {appointment.medications}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Action Footer for Scheduled appointments */}
@@ -180,7 +269,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
         <View style={styles.footerRow}>
           <View style={styles.priceBox}>
             <Text variant="caption" color={colors.muted}>
-              Fee:{' '}
+              {isVet ? 'Rate: ' : 'Fee: '}
             </Text>
             <Text variant="caption" color={colors.ink} style={styles.boldText}>
               ${Number(appointment.price_usd || 0).toFixed(0)}
@@ -190,7 +279,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           <View style={styles.actionsBox}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Chat with ${vetName}`}
+              accessibilityLabel={`Chat with ${isVet ? petName : vetName}`}
               onPress={handleOpenChat}
               disabled={isOpeningChat}
               style={({ pressed }) => [styles.chatBtn, pressed && styles.pressed]}
@@ -203,13 +292,17 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Enter consultation room with ${vetName}`}
-              onPress={() => router.push(`/consult/${appointment.id}`)}
-              style={({ pressed }) => [styles.enterBtn, pressed && styles.pressed]}
+              accessibilityLabel={`Enter consultation room with ${isVet ? petName : vetName}`}
+              onPress={handleEnterRoom}
+              style={({ pressed }) => [
+                styles.enterBtn,
+                isVet && !isVerified && styles.enterBtnDisabled,
+                pressed && styles.pressed,
+              ]}
             >
               <Video size={13} color={colors.ink} />
               <Text variant="caption" color={colors.ink} style={styles.enterBtnText}>
-                Enter Room
+                {isVet && !isVerified ? 'Verify License' : 'Enter Room'}
               </Text>
             </Pressable>
 
@@ -244,7 +337,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           <View style={styles.actionsBox}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Chat regarding consultation with ${vetName}`}
+              accessibilityLabel={`Chat regarding consultation with ${isVet ? petName : vetName}`}
               onPress={handleOpenChat}
               disabled={isOpeningChat}
               style={({ pressed }) => [styles.chatBtn, pressed && styles.pressed]}
@@ -271,8 +364,12 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Create prescription for ${petName}`}
-                onPress={() => router.push(`/consult/${appointment.id}/prescription`)}
-                style={({ pressed }) => [styles.createRxBtn, pressed && styles.pressed]}
+                onPress={handleCreatePrescription}
+                style={({ pressed }) => [
+                  styles.createRxBtn,
+                  !isVerified && styles.enterBtnDisabled,
+                  pressed && styles.pressed,
+                ]}
               >
                 <FilePlus size={13} color={colors.ink} />
                 <Text variant="caption" color={colors.ink} style={styles.createRxBtnText}>
@@ -440,6 +537,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   pressed: {
+    opacity: 0.7,
+  },
+  inlineContactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  urgencyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  urgencyHigh: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FECACA',
+    borderWidth: 1,
+  },
+  urgencyMedium: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+  },
+  urgencyLow: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
+  },
+  urgencyText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  urgencyHighText: {
+    color: '#991B1B',
+  },
+  urgencyStandardText: {
+    color: colors.inkSoft,
+  },
+  enterBtnDisabled: {
+    backgroundColor: colors.muted,
     opacity: 0.7,
   },
 });

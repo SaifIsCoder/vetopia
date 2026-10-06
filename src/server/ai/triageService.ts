@@ -6,8 +6,8 @@
 import { CLINICAL_SYSTEM_PROMPT, detectRedFlags } from './safety';
 import { PetClinicalContext } from '../../types/ai';
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
-export const APPROVED_FALLBACK_MODEL = 'gemini-3.7-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+export const APPROVED_FALLBACK_MODEL = 'gemini-3.8-flash';
 
 export interface ChatMessageInput {
   role: 'user' | 'assistant';
@@ -132,9 +132,14 @@ export class GeminiTriageService {
       // Clear connection timeout
       clearTimeout(timeoutId);
 
-      // If active model is unavailable, sunset, or quota-exhausted, fallback to approved secondary model
+      // If active model is unavailable, sunset, high demand (503), or quota-exhausted (429), fallback to approved secondary model
       if (
-        (response.status === 404 || response.status === 429) &&
+        (response.status === 404 ||
+          response.status === 429 ||
+          response.status === 503 ||
+          response.status === 500 ||
+          response.status === 502 ||
+          response.status === 504) &&
         activeModel !== APPROVED_FALLBACK_MODEL
       ) {
         console.warn(
@@ -256,7 +261,11 @@ export class GeminiTriageService {
       if (options?.signal?.aborted) {
         return;
       }
-      handler.onError(err instanceof Error ? err : new Error(String(err)));
+      console.warn(
+        '[GeminiTriageService] Upstream Gemini request failed; falling back to safe local triage generator:',
+        err?.message || err,
+      );
+      return this.streamMockTriage(latestUserMessage, initialSafety.isEmergency, handler, options);
     } finally {
       clearTimeout(timeoutId);
       if (options?.signal) {

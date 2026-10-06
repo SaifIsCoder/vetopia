@@ -41,10 +41,11 @@ export class AIService {
     onEvent: (event: TriageStreamEvent) => void,
     options?: StreamTriageChatOptions,
   ): Promise<void> {
-    const timeoutMs = options?.timeoutMs ?? 15000;
-    const inactivityTimeoutMs = options?.inactivityTimeoutMs ?? 15000;
+    const timeoutMs = options?.timeoutMs ?? 30000;
+    const inactivityTimeoutMs = options?.inactivityTimeoutMs ?? 30000;
     const controller = new AbortController();
     let isAbortedExternally = false;
+    let isTimedOut = false;
 
     // Link external abort signal if provided
     if (options?.signal) {
@@ -59,6 +60,7 @@ export class AIService {
     }
 
     let connectionTimer: NodeJS.Timeout | null = setTimeout(() => {
+      isTimedOut = true;
       controller.abort();
     }, timeoutMs);
 
@@ -67,6 +69,7 @@ export class AIService {
     const resetInactivityTimer = () => {
       if (inactivityTimer) clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => {
+        isTimedOut = true;
         controller.abort();
       }, inactivityTimeoutMs);
     };
@@ -179,7 +182,12 @@ export class AIService {
         cleanupTimers();
         onEvent({ done: true });
       } else {
-        // Fallback for non-streaming environments: read full text and parse SSE lines
+        // Fallback for non-streaming environments (e.g. React Native):
+        // Clean up the inactivity timer before awaiting full response text to prevent premature abort
+        if (inactivityTimer) {
+          clearTimeout(inactivityTimer);
+          inactivityTimer = null;
+        }
         const text = await response.text();
         cleanupTimers();
         const lines = text.split('\n');
@@ -199,8 +207,30 @@ export class AIService {
       }
     } catch (err: any) {
       cleanupTimers();
-      // If cancelled intentionally by user, exit without alarming the user
-      if (isAbortedExternally) {
+
+      const isCanceled =
+        isAbortedExternally ||
+        options?.signal?.aborted ||
+        controller.signal.aborted ||
+        err?.name === 'AbortError' ||
+        (typeof err?.message === 'string' &&
+          (err.message.includes('canceled') ||
+            err.message.includes('cancelled') ||
+            err.message.includes('aborted')));
+
+      // If intentionally canceled (user navigated away, unmounted, or sent new prompt), exit quietly
+      if (isCanceled && !isTimedOut) {
+        return;
+      }
+
+      if (isTimedOut) {
+        console.warn(`[AIService] Triage request timed out after ${timeoutMs}ms`);
+        onEvent({
+          error:
+            'The AI assistant took too long to respond. Please check your connection and try again in a moment.',
+          isEmergency: false,
+          done: true,
+        });
         return;
       }
 

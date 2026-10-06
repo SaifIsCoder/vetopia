@@ -182,6 +182,7 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
     test('test_vet_search_query: queries doctor name or specialty when q is provided', async () => {
       const mockQueryBuilder: any = {
         select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
         or: jest.fn().mockReturnThis(),
         order: jest.fn().mockReturnThis(),
         range: jest.fn().mockReturnThis(),
@@ -194,6 +195,8 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
 
       const result = await vetService.getVets({ q: 'Sarah' });
 
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('verified', true);
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('accepting', true);
       expect(mockQueryBuilder.or).toHaveBeenCalledWith(
         'name.ilike.%Sarah%,specialty.ilike.%Sarah%',
       );
@@ -216,6 +219,8 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
 
       const result = await vetService.getVets({ specialty: 'Dermatology' });
 
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('verified', true);
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('accepting', true);
       expect(mockQueryBuilder.eq).toHaveBeenCalledWith('specialty', 'Dermatology');
       expect(result).toHaveLength(1);
       expect(result[0].specialty).toBe('Dermatology');
@@ -224,6 +229,7 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
     test('Filters by language using contains operator', async () => {
       const mockQueryBuilder: any = {
         select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
         contains: jest.fn().mockReturnThis(),
         order: jest.fn().mockReturnThis(),
         range: jest.fn().mockReturnThis(),
@@ -236,6 +242,8 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
 
       const result = await vetService.getVets({ language: 'Japanese' });
 
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('verified', true);
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('accepting', true);
       expect(mockQueryBuilder.contains).toHaveBeenCalledWith('languages', ['Japanese']);
       expect(result).toHaveLength(1);
     });
@@ -262,6 +270,7 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
     test('Filters by maximum price (lte)', async () => {
       const mockQueryBuilder: any = {
         select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
         lte: jest.fn().mockReturnThis(),
         order: jest.fn().mockReturnThis(),
         range: jest.fn().mockReturnThis(),
@@ -278,9 +287,27 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
       expect(result).toHaveLength(1);
     });
 
+    test('test_vet_discovery_verified_and_accepting_enforced: strictly requires verified: true and accepting: true', async () => {
+      const mockQueryBuilder: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        range: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation((callback) => callback({ data: mockVets, error: null })),
+      };
+
+      (supabase.from as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+      await vetService.getVets();
+
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('verified', true);
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('accepting', true);
+    });
+
     test('Handles database error gracefully', async () => {
       const mockQueryBuilder: any = {
         select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
         order: jest.fn().mockReturnThis(),
         then: jest
           .fn()
@@ -589,6 +616,7 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
         slot_minutes: 30,
         accepting: true,
         timezone: 'UTC',
+        verified: true,
       };
 
       const mockAvailability: VetAvailability[] = [
@@ -615,10 +643,42 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
 
       const result = await vetService.getVetSchedule('vet-fallback', 14);
       expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
       expect(supabase.from).toHaveBeenCalledWith('vet_profiles');
       expect(supabase.from).toHaveBeenCalledWith('vet_availability');
       // Note: appointments table is NOT queried by client!
       expect(supabase.from).not.toHaveBeenCalledWith('appointments');
+    });
+
+    test('Fallback returns empty array when doctor is unverified', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: null,
+        error: { message: 'function get_vet_schedule does not exist' },
+      });
+
+      const mockVetQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: 'vet-unverified', slot_minutes: 30, accepting: true, verified: false },
+          error: null,
+        }),
+      };
+
+      const mockAvailQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
+      (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'vet_profiles') return mockVetQuery;
+        if (table === 'vet_availability') return mockAvailQuery;
+        return { select: jest.fn().mockReturnThis() };
+      });
+
+      const result = await vetService.getVetSchedule('vet-unverified', 14);
+      expect(result).toEqual([]);
     });
   });
 });

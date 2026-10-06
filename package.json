@@ -19,7 +19,9 @@
     "db:link": "supabase link --project-ref oqqdznxlqnscvhlluiit"
   },
   "dependencies": {
-    "@livekit/react-native": "^2.12.0",
+    "@config-plugins/react-native-webrtc": "^15.0.2",
+    "@livekit/react-native": "^3.0.0",
+    "@livekit/react-native-expo-plugin": "^1.0.3",
     "@livekit/react-native-webrtc": "^144.2.0",
     "@supabase/supabase-js": "^2.105.3",
     "@tanstack/react-query": "^5.83.0",
@@ -28,6 +30,7 @@
     "expo-dev-client": "~57.0.19",
     "expo-font": "~57.0.4",
     "expo-image": "~57.0.5",
+    "expo-image-picker": "~57.0.20",
     "expo-linking": "~57.0.11",
     "expo-local-authentication": "~57.0.3",
     "expo-notifications": "~57.0.21",

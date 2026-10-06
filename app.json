@@ -9,7 +9,21 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vetopia.app"
+      "bundleIdentifier": "com.vetopia.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Vetopia requires camera access for telemedicine video consultations with veterinarians.",
+        "NSMicrophoneUsageDescription": "Vetopia requires microphone access for audio and video consultations.",
+        "NSFaceIDUsageDescription": "Vetopia uses Face ID for fast and secure access to your pet healthcare passport.",
+        "NSPhotoLibraryUsageDescription": "Vetopia requires photo library access to upload pet medical records and profile pictures.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "fetch",
+          "remote-notification"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +37,16 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.INTERNET",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
       ]
     },
     "web": {
@@ -51,10 +74,19 @@
           "sounds": [],
           "mode": "production"
         }
-      ]
+      ],
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c9812bee-c3ab-4671-abbf-ce1c2724f683"
+      }
+    },
+    "owner": "saif.dev"
   }
 }

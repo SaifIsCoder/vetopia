@@ -5,6 +5,8 @@ import { Appointment } from '../../types/appointment';
 import { Text } from '../ui/Text';
 import { Avatar } from '../ui/Avatar';
 import { CallControls } from './CallControls';
+import { VideoView, isWebRTCAvailable } from '../../lib/telemedicine/livekitNative';
+import type { VideoTrack as LKVideoTrack, LocalVideoTrack } from 'livekit-client';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { radii } from '../../theme/radii';
@@ -14,6 +16,8 @@ export interface ActiveCallViewProps {
   isVet: boolean;
   participantName: string;
   remoteParticipantName: string;
+  localVideoTrack?: LocalVideoTrack | null;
+  remoteVideoTrack?: LKVideoTrack | null;
   isMicMuted: boolean;
   isVideoMuted: boolean;
   isFrontCamera: boolean;
@@ -33,6 +37,8 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
   isVet,
   participantName,
   remoteParticipantName,
+  localVideoTrack,
+  remoteVideoTrack,
   isMicMuted,
   isVideoMuted,
   isFrontCamera,
@@ -117,27 +123,53 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
           </View>
         ) : null}
 
-        {/* Remote Participant Media Placeholder */}
-        <View style={styles.remotePlaceholder}>
-          <Avatar
-            name={
-              remoteParticipantName || (isVet ? 'Pet Parent' : appointment.vet?.name || 'Doctor')
-            }
-            size={96}
-            style={styles.remoteAvatar}
+        {/* Development build warning when WebRTC native module is not linked */}
+        {!isWebRTCAvailable ? (
+          <View style={styles.devBanner}>
+            <AlertTriangle size={14} color={colors.warning} />
+            <Text variant="caption" color={colors.white} style={styles.devBannerText}>
+              Preview Mode: WebRTC requires an Expo Development Build
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Remote Participant Media Stream / Placeholder */}
+        {remoteVideoTrack ? (
+          <VideoView
+            videoTrack={remoteVideoTrack}
+            style={StyleSheet.absoluteFill}
+            objectFit="cover"
           />
-          <Text variant="headingSm" color={colors.white} style={styles.remoteName}>
-            {remoteParticipantName || (isVet ? 'Pet Parent' : appointment.vet?.name || 'Doctor')}
-          </Text>
-          <Text variant="caption" color="rgba(255,255,255,0.7)">
-            {isVideoMode ? 'Remote Video Stream Connected' : 'Audio Call Active'}
-          </Text>
-        </View>
+        ) : (
+          <View style={styles.remotePlaceholder}>
+            <Avatar
+              name={
+                remoteParticipantName || (isVet ? 'Pet Parent' : appointment.vet?.name || 'Doctor')
+              }
+              size={96}
+              style={styles.remoteAvatar}
+            />
+            <Text variant="headingSm" color={colors.white} style={styles.remoteName}>
+              {remoteParticipantName || (isVet ? 'Pet Parent' : appointment.vet?.name || 'Doctor')}
+            </Text>
+            <Text variant="caption" color="rgba(255,255,255,0.7)">
+              {isVideoMode ? 'Waiting for remote video stream...' : 'Audio Call Active'}
+            </Text>
+          </View>
+        )}
 
         {/* Local Floating PiP Window (Bottom Right Corner) */}
         {isVideoMode ? (
           <View style={styles.localPipWindow}>
-            {!isVideoMuted ? (
+            {!isVideoMuted && localVideoTrack ? (
+              <VideoView
+                videoTrack={localVideoTrack}
+                style={StyleSheet.absoluteFill}
+                objectFit="cover"
+                mirror={isFrontCamera}
+                zOrder={1}
+              />
+            ) : !isVideoMuted ? (
               <View style={styles.localPipVideo}>
                 <Text variant="caption" color={colors.white} style={styles.pipLabel}>
                   {isFrontCamera ? 'You (Front)' : 'You (Rear)'}
@@ -319,5 +351,24 @@ const styles = StyleSheet.create({
   bottomDock: {
     paddingBottom: spacing.xl,
     paddingTop: spacing.sm,
+  },
+  devBanner: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 15,
+    backgroundColor: 'rgba(217, 119, 6, 0.9)',
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  devBannerText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

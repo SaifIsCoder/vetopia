@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -9,6 +9,8 @@ import {
   Heart,
   FileText,
   AlertCircle,
+  Camera,
+  Upload,
   Image as ImageIcon,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
@@ -21,10 +23,13 @@ import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
 import { useCreatePet } from '../../src/hooks/usePets';
+import { useAuthStore } from '../../src/store/authStore';
+import { petPhotoService } from '../../src/lib/storage/petPhotoService';
 import { SPECIES_OPTIONS, SEX_OPTIONS, PetSpecies, PetSex } from '../../src/types/pet';
 
 export default function AddPetScreen() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const createPetMutation = useCreatePet();
 
   const [name, setName] = useState('');
@@ -35,6 +40,7 @@ export default function AddPetScreen() {
   const [weightKg, setWeightKg] = useState('');
   const [color, setColor] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [bio, setBio] = useState('');
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

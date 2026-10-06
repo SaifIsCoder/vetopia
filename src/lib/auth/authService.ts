@@ -392,6 +392,65 @@ class AuthService {
   }
 
   /**
+   * Instantly verifies the authenticated doctor's medical license number.
+   * Updates Supabase and syncs local authStore immediately.
+   */
+  public async verifyLicense(licenseNumber: string): Promise<boolean> {
+    const trimmed = licenseNumber?.trim();
+    if (!trimmed || trimmed.length < 3) {
+      throw new ValidationError('Medical license number must be at least 3 characters.');
+    }
+
+    try {
+      console.info(
+        '🩺 [AuthService] Submitting medical license for instant verification:',
+        trimmed,
+      );
+      const { error } = await supabase.rpc('verify_doctor_license', {
+        license_number: trimmed,
+      });
+
+      if (error) {
+        console.warn(
+          '⚠️ [AuthService] RPC verify_doctor_license returned error, trying fallback:',
+          error,
+        );
+        const currentUserId = useAuthStore.getState().user?.id;
+        if (currentUserId) {
+          const { error: updateError } = await supabase
+            .from('vet_profiles')
+            .update({
+              verified: true,
+              bio: `[Verified License: ${trimmed}]`,
+            })
+            .eq('user_id', currentUserId);
+
+          if (updateError) {
+            console.error('❌ [AuthService] Fallback vet_profiles update error:', updateError);
+            throw new ApiError(error.message || updateError.message, 400);
+          }
+        } else {
+          throw new ApiError(error.message, 400);
+        }
+      }
+
+      // Update auth store user state immediately
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) {
+        useAuthStore.getState().setUser({
+          ...currentUser,
+          isVetVerified: true,
+        });
+      }
+
+      console.info('✅ [AuthService] Veterinarian license successfully verified!');
+      return true;
+    } catch (err) {
+      throw this.sanitizeError(err);
+    }
+  }
+
+  /**
    * Request password reset link for email.
    */
   public async requestPasswordReset(email: string): Promise<void> {

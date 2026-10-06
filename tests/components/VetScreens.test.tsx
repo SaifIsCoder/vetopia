@@ -294,6 +294,26 @@ describe('Veterinarian Discovery UI & Screens (MVP-03)', () => {
       ).toBeTruthy();
     });
 
+    test('When doctor is unverified, displays verification pending warning and disabled CTA', () => {
+      mockUseVetReturn = {
+        data: { ...sampleVet, verified: false },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: mockRefetchVet,
+      };
+
+      const { getByText, getAllByText } = render(<VetProfileScreen />);
+
+      // Should show verification pending banner
+      expect(getAllByText('Doctor Verification Pending').length).toBeGreaterThan(0);
+      expect(
+        getByText(
+          'This veterinarian is pending administrative verification. Consultations cannot be booked until their medical license is authenticated.',
+        ),
+      ).toBeTruthy();
+    });
+
     test('Back button calls router.back()', () => {
       const { getByLabelText } = render(<VetProfileScreen />);
 
