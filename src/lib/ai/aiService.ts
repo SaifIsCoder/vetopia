@@ -226,9 +226,8 @@ export class AIService {
       if (isTimedOut) {
         console.warn(`[AIService] Triage request timed out after ${timeoutMs}ms`);
         onEvent({
-          error:
-            'The AI assistant took too long to respond. Please check your connection and try again in a moment.',
-          isEmergency: false,
+          error: FALLBACK_ERROR_MESSAGE,
+          isEmergency: true,
           done: true,
         });
         return;

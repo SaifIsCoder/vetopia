@@ -20,13 +20,21 @@ export function createTelemedicineServer() {
   app.use(cors());
   app.use(express.json());
 
-  // Health check
-  app.get('/health', (_req: Request, res: Response) => {
+  const healthHandler = (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
+  };
 
-  // Approved Telemedicine Token Endpoint (API-TELE-001)
-  app.post('/api/v1/telemedicine/token', async (req: Request, res: Response) => {
+  // Root health alias for backward compatibility / cloud probes
+  app.get('/health', healthHandler);
+
+  // Group all API v1 endpoints consistently under /api/v1
+  const v1 = express.Router();
+
+  // GET /api/v1/health
+  v1.get('/health', healthHandler);
+
+  // POST /api/v1/telemedicine/token
+  v1.post('/telemedicine/token', async (req: Request, res: Response) => {
     try {
       const authorizationHeader = req.headers.authorization;
       const result = await handleTelemedicineTokenRequest({
@@ -46,8 +54,8 @@ export function createTelemedicineServer() {
     }
   });
 
-  // Register Device Push Token (FR-NOTIF-001 / POST /api/v1/notifications/token)
-  app.post('/api/v1/notifications/token', async (req: Request, res: Response) => {
+  // POST /api/v1/notifications/token
+  v1.post('/notifications/token', async (req: Request, res: Response) => {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader?.startsWith('Bearer ')) {
@@ -119,8 +127,8 @@ export function createTelemedicineServer() {
     }
   });
 
-  // Trigger 15-Minute Consultation Reminder Worker (API-NOTIF-002)
-  app.post('/api/v1/notifications/reminders/run', async (_req: Request, res: Response) => {
+  // POST /api/v1/notifications/reminders/run
+  v1.post('/notifications/reminders/run', async (_req: Request, res: Response) => {
     try {
       const processedCount = await pushDispatcher.runAppointmentReminderWorker();
       return res.status(200).json({
@@ -139,8 +147,8 @@ export function createTelemedicineServer() {
     }
   });
 
-  // Trigger Transactional Outbox Push Dispatcher (API-NOTIF-003)
-  app.post('/api/v1/notifications/dispatch-pending', async (_req: Request, res: Response) => {
+  // POST /api/v1/notifications/dispatch-pending
+  v1.post('/notifications/dispatch-pending', async (_req: Request, res: Response) => {
     try {
       const dispatchedCount = await pushDispatcher.dispatchPendingNotifications();
       return res.status(200).json({
@@ -159,10 +167,13 @@ export function createTelemedicineServer() {
     }
   });
 
-  // 24/7 AI Veterinary Triage Chat (FR-AI-001 / API-AI-001)
-  app.post('/api/v1/ai/triage-chat', (req: Request, res: Response) => {
+  // POST /api/v1/ai/triage-chat
+  v1.post('/ai/triage-chat', (req: Request, res: Response) => {
     return handleTriageChatRequest(req, res);
   });
+
+  // Mount API v1 router
+  app.use('/api/v1', v1);
 
   return app;
 }

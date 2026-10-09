@@ -153,7 +153,7 @@ export default function AIChatScreen({ emergencyNumber }: AIChatScreenProps = {}
         ) : null}
 
         {/* Clinical Disclaimer Banner */}
-        {/* <DisclaimerBanner /> */}
+        <DisclaimerBanner />
 
         {/* Emergency Red-Flag Alert Banner (renders dynamically on emergency detection) */}
         {isEmergency ? <EmergencyAlertCard emergencyNumber={emergencyNumber} /> : null}

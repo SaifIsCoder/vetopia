@@ -105,6 +105,18 @@ describe('AI Gateway Route Integration (POST /api/v1/ai/triage-chat)', () => {
     resetRateLimits();
   });
 
+  test('0. Health endpoints respond with 200 on both /health and /api/v1/health', async () => {
+    const res1 = await makeRequest(port, '/health', 'GET');
+    expect(res1.status).toBe(200);
+    const body1 = JSON.parse(res1.body);
+    expect(body1.status).toBe('ok');
+
+    const res2 = await makeRequest(port, '/api/v1/health', 'GET');
+    expect(res2.status).toBe(200);
+    const body2 = JSON.parse(res2.body);
+    expect(body2.status).toBe('ok');
+  });
+
   test('1. Endpoint is mounted at /api/v1/ai/triage-chat', async () => {
     const res = await makeRequest(port, '/api/v1/ai/triage-chat', 'POST', {}, {});
 
