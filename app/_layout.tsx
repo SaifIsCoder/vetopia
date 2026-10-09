@@ -191,6 +191,9 @@ function AuthGatekeeper({ children }: { children: React.ReactNode }) {
     const inVetGroup = segs[0] === 'vet';
     const isAiChat = segs[0] === 'ai';
     const isOnboarding = inAuthGroup && segs[1] === 'onboarding';
+    const inTabsGroup = segs[0] === '(tabs)';
+
+    const isDoctor = role === 'vet' || user?.isVet === true || user?.roles?.includes('vet');
 
     if (!isAuthenticated) {
       // Unauthenticated users cannot access protected routes (guest triage mode permitted)
@@ -206,14 +209,17 @@ function AuthGatekeeper({ children }: { children: React.ReactNode }) {
       } else {
         // Authenticated and onboarded users should not stay on login/register/welcome/onboarding
         if (inAuthGroup) {
-          if (role === 'vet') {
+          if (isDoctor) {
             router.replace('/vet/dashboard');
           } else {
             router.replace('/(tabs)');
           }
-        } else if (inVetGroup && role === 'pet_parent') {
+        } else if (inVetGroup && !isDoctor) {
           // Pet parents cannot access doctor portal
           router.replace('/(tabs)');
+        } else if (inTabsGroup && isDoctor) {
+          // Doctors belong in doctor portal (/vet/dashboard), not pet parent tabs
+          router.replace('/vet/dashboard');
         }
       }
     }
@@ -222,6 +228,7 @@ function AuthGatekeeper({ children }: { children: React.ReactNode }) {
     isAuthenticated,
     isBiometricLocked,
     role,
+    user,
     onboardingCompleted,
     segments,
     router,

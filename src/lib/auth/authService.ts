@@ -316,38 +316,96 @@ class AuthService {
 
       const prof = profileRes.data;
       const roleRows = (rolesRes.data ?? []) as { role: UserRole }[];
-      let isVet = !!vetRes.data || roleRows.some((r) => r.role === 'vet');
-      const isVetVerified = vetRes.data?.verified === true;
 
+      // Non-blocking auth user metadata query to detect role and credentials assigned during registration
+      let metaRole: string | undefined;
+      let metaData: Record<string, any> | undefined;
+      try {
+        const { data: authUserData } = await supabase.auth.getUser();
+        metaRole = authUserData?.user?.user_metadata?.role;
+        metaData = authUserData?.user?.user_metadata;
+      } catch {
+        // Non-blocking metadata check
+      }
+
+      const isDoctorDesignated =
+        !!vetRes.data ||
+        roleRows.some((r) => r.role === 'vet') ||
+        metaRole === 'vet' ||
+        metaRole === 'veterinarian';
+
+      let isVet = isDoctorDesignated;
+      let isVetVerified = vetRes.data?.verified === true;
       let roles: UserRole[] = roleRows.map((r) => r.role);
 
-      // If user_roles record is missing, determine role from vet_profile or auth metadata
-      if (roles.length === 0) {
-        let metaRole: string | undefined;
-        try {
-          const { data: authUserData } = await supabase.auth.getUser();
-          metaRole = authUserData?.user?.user_metadata?.role;
-        } catch {
-          // Non-blocking metadata check
+      if (isVet) {
+        // Guarantee 'vet' is present and is the primary (first) role
+        roles = ['vet', ...roles.filter((r) => r !== 'vet')];
+
+        // 1. Self-heal missing user_roles row as 'vet'
+        if (!roleRows.some((r) => r.role === 'vet')) {
+          try {
+            await supabase.from('user_roles').insert({
+              user_id: userId,
+              role: 'vet',
+            });
+            console.info(
+              `🩹 [AuthService] Self-healed missing user_roles row as "vet" for user:`,
+              userId,
+            );
+          } catch (healErr) {
+            console.warn('⚠️ [AuthService] Self-healing user_roles warning:', healErr);
+          }
         }
 
-        const isVetDesignated = isVet || metaRole === 'vet' || metaRole === 'veterinarian';
-        const fallbackRole: UserRole = isVetDesignated ? 'vet' : 'pet_parent';
-        roles = [fallbackRole];
-        isVet = isVetDesignated;
+        // 2. Self-heal missing vet_profiles row so the doctor exists in PostgreSQL
+        if (!vetRes.data) {
+          try {
+            const vetName =
+              metaData?.full_name || prof?.full_name || email?.split('@')[0] || 'Veterinarian';
+            const vetSpecialty = metaData?.specialty || 'General Veterinary Medicine';
+            const vetPrice = Number(metaData?.price_usd) || 29;
 
-        // Attempt self-healing insert for authenticated user (claim own role RLS policy allows non-admin insert)
-        try {
-          await supabase.from('user_roles').insert({
-            user_id: userId,
-            role: fallbackRole,
-          });
-          console.info(
-            `🩹 [AuthService] Self-healed missing user_roles row as "${fallbackRole}" for user:`,
-            userId,
-          );
-        } catch (healErr) {
-          console.warn('⚠️ [AuthService] Self-healing user_roles warning:', healErr);
+            const { data: newVet, error: newVetErr } = await supabase
+              .from('vet_profiles')
+              .insert({
+                user_id: userId,
+                name: vetName,
+                specialty: vetSpecialty,
+                price_usd: vetPrice,
+                verified: false,
+                accepting: true,
+              })
+              .select('id, name, verified')
+              .maybeSingle();
+
+            if (!newVetErr && newVet) {
+              vetRes.data = newVet;
+              isVetVerified = newVet.verified === true;
+              console.info(`🩺 [AuthService] Self-healed missing vet_profiles row for user:`, userId);
+            } else if (newVetErr) {
+              console.warn('⚠️ [AuthService] Self-healing vet_profiles error:', newVetErr);
+            }
+          } catch (vetErr) {
+            console.warn('⚠️ [AuthService] Self-healing vet_profiles exception:', vetErr);
+          }
+        }
+      } else {
+        // If not a doctor and user_roles record is missing, default to pet_parent
+        if (roles.length === 0) {
+          roles = ['pet_parent'];
+          try {
+            await supabase.from('user_roles').insert({
+              user_id: userId,
+              role: 'pet_parent',
+            });
+            console.info(
+              `🩹 [AuthService] Self-healed missing user_roles row as "pet_parent" for user:`,
+              userId,
+            );
+          } catch (healErr) {
+            console.warn('⚠️ [AuthService] Self-healing user_roles warning:', healErr);
+          }
         }
       }
 
@@ -432,6 +490,37 @@ class AuthService {
         } else {
           throw new ApiError(error.message, 400);
         }
+      }
+
+      // Ensure doctor has default availability in vet_availability table
+      try {
+        const currentUserId = useAuthStore.getState().user?.id;
+        if (currentUserId) {
+          const { data: vProfile } = await supabase
+            .from('vet_profiles')
+            .select('id')
+            .eq('user_id', currentUserId)
+            .maybeSingle();
+
+          if (vProfile?.id) {
+            const { count } = await supabase
+              .from('vet_availability')
+              .select('*', { count: 'exact', head: true })
+              .eq('vet_id', vProfile.id);
+
+            if (!count || count === 0) {
+              const defaultWindows = [1, 2, 3, 4, 5].map((weekday) => ({
+                vet_id: vProfile.id,
+                weekday,
+                start_minute: 540,
+                end_minute: 1020,
+              }));
+              await supabase.from('vet_availability').insert(defaultWindows);
+            }
+          }
+        }
+      } catch (availErr) {
+        console.warn('⚠️ [AuthService] Seed default availability notice:', availErr);
       }
 
       // Update auth store user state immediately

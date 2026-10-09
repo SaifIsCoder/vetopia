@@ -64,10 +64,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async (session, profile) => {
     const bioStatus = await checkBiometricsAvailability();
-    const primaryRole =
-      profile?.roles.find((r) => r === 'vet') ||
-      profile?.roles[0] ||
-      (profile?.isVet ? 'vet' : 'pet_parent');
+    const isDoctor = profile?.isVet === true || profile?.roles?.includes('vet');
+    const primaryRole: UserRole = isDoctor ? 'vet' : (profile?.roles?.[0] || 'pet_parent');
 
     const hasSession = !!session && !!profile;
     const isBiometricLocked = hasSession && bioStatus.isAvailable && bioStatus.isEnabled;
@@ -97,10 +95,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     const currentProfile = profile ?? get().user;
-    const primaryRole =
-      currentProfile?.roles.find((r) => r === 'vet') ||
-      currentProfile?.roles[0] ||
-      (currentProfile?.isVet ? 'vet' : 'pet_parent');
+    const isDoctor = currentProfile?.isVet === true || currentProfile?.roles?.includes('vet');
+    const primaryRole: UserRole = isDoctor ? 'vet' : (currentProfile?.roles?.[0] || 'pet_parent');
 
     set({
       session,
@@ -117,10 +113,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setUser: (user) => {
-    const primaryRole =
-      user?.roles.find((r) => r === 'vet') ||
-      user?.roles[0] ||
-      (user?.isVet ? 'vet' : 'pet_parent');
+    const isDoctor = user?.isVet === true || user?.roles?.includes('vet');
+    const primaryRole: UserRole = isDoctor ? 'vet' : (user?.roles?.[0] || 'pet_parent');
 
     set({
       user,
@@ -132,7 +126,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setRoles: (roles) => {
-    const primaryRole = roles.find((r) => r === 'vet') || roles[0] || 'pet_parent';
+    const isDoctor = roles.includes('vet');
+    const primaryRole: UserRole = isDoctor ? 'vet' : (roles[0] || 'pet_parent');
     const currentUser = get().user;
     const updatedUser = currentUser ? { ...currentUser, roles } : null;
 

@@ -89,8 +89,18 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
       if (res && res.id) {
         router.push(`/messages/${res.id}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Could not open conversation:', err);
+      const isForbidden =
+        err?.name === 'ForbiddenError' ||
+        err?.message?.includes('not authorized') ||
+        err?.message?.includes('FORBIDDEN');
+      Alert.alert(
+        'Chat Unavailable',
+        isForbidden
+          ? 'You are not assigned as a participant in this consultation. Only the booking pet parent or the assigned doctor can access this chat.'
+          : err?.message || 'Could not open conversation. Please check your sign-in status and try again.',
+      );
     } finally {
       setIsOpeningChat(false);
     }

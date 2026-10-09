@@ -415,15 +415,111 @@ export class MessageService {
     }
 
     try {
+      // 1. Primary: Server-side atomic RPC
       const { data, error } = await supabase.rpc('get_or_create_appointment_conversation', {
         p_appointment_id: appointmentId,
       });
 
-      if (error) {
-        throw this.sanitizeError(error);
+      if (!error && data && (data as any).id) {
+        return data as CreateAppointmentConversationResponse;
       }
 
-      return data as CreateAppointmentConversationResponse;
+      if (error) {
+        const errMsg = error.message || '';
+        if (
+          errMsg.includes('UNAUTHENTICATED') ||
+          errMsg.includes('FORBIDDEN') ||
+          errMsg.includes('VALIDATION_ERROR') ||
+          errMsg.includes('NOT_FOUND')
+        ) {
+          throw this.sanitizeError(error);
+        }
+      }
+
+      // 2. Fallback: Check if conversation already exists in conversations table
+      const { data: existingConv } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('appointment_id', appointmentId)
+        .maybeSingle();
+
+      if (existingConv && existingConv.id) {
+        return {
+          id: existingConv.id,
+          appointment_id: existingConv.appointment_id,
+          subject: existingConv.subject,
+          created_at: existingConv.created_at,
+          last_message_at: existingConv.last_message_at,
+          is_new: false,
+        };
+      }
+
+      // 3. Fallback: Direct table creation protected by RLS
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const { data: appt } = await supabase
+        .from('appointments')
+        .select('*, vet_profiles(user_id, name), pets(name)')
+        .eq('id', appointmentId)
+        .maybeSingle();
+
+      const vetName = (appt as any)?.vet_profiles?.name || 'Doctor';
+      const petName = (appt as any)?.pets?.name || 'Pet';
+      const vetUserId = (appt as any)?.vet_profiles?.user_id;
+
+      const { data: newConv, error: convErr } = await supabase
+        .from('conversations')
+        .insert({
+          kind: 'general',
+          subject: `Consultation: ${vetName} & ${petName}`,
+          appointment_id: appointmentId,
+          open_to_join: false,
+          created_by: user?.id || appt?.pet_parent_id,
+          created_at: new Date().toISOString(),
+          last_message_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (convErr || !newConv) {
+        throw this.sanitizeError(convErr || error);
+      }
+
+      // Add participants
+      const participantsToInsert: any[] = [];
+      if (appt?.pet_parent_id) {
+        participantsToInsert.push({
+          conversation_id: newConv.id,
+          user_id: appt.pet_parent_id,
+          side: 'member',
+          last_read_at: new Date().toISOString(),
+        });
+      }
+      if (vetUserId && vetUserId !== appt?.pet_parent_id) {
+        participantsToInsert.push({
+          conversation_id: newConv.id,
+          user_id: vetUserId,
+          side: 'vet',
+          last_read_at: new Date().toISOString(),
+        });
+      }
+
+      if (participantsToInsert.length > 0) {
+        await supabase
+          .from('conversation_participants')
+          .upsert(participantsToInsert, { onConflict: 'conversation_id,user_id' });
+      }
+
+      return {
+        id: newConv.id,
+        appointment_id: newConv.appointment_id,
+        subject: newConv.subject,
+        created_at: newConv.created_at,
+        last_message_at: newConv.last_message_at,
+        is_new: true,
+      };
     } catch (err) {
       throw this.sanitizeError(err);
     }

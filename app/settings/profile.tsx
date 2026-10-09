@@ -59,7 +59,8 @@ import {
 
 export default function ProfileSettingsScreen() {
   const router = useRouter();
-  const { user, biometricsEnabled, setBiometricsEnabled } = useAuthStore();
+  const { user, role, biometricsEnabled, setBiometricsEnabled } = useAuthStore();
+  const isDoctor = role === 'vet' || user?.isVet === true || user?.roles?.includes('vet');
   const { updateProfile, isUpdating, updateError, resetStatus } = useProfile();
 
   // Biometric status state
@@ -278,8 +279,14 @@ export default function ProfileSettingsScreen() {
             ) : null}
             <View style={styles.badgeRow}>
               <Badge
-                variant={user?.isVet ? 'verified' : 'scheduled'}
-                label={user?.isVet ? 'Verified Veterinarian' : 'Pet Parent'}
+                variant={isDoctor ? (user?.isVetVerified ? 'verified' : 'pending') : 'scheduled'}
+                label={
+                  isDoctor
+                    ? user?.isVetVerified
+                      ? 'Verified Veterinarian'
+                      : 'Veterinarian'
+                    : 'Pet Parent'
+                }
               />
             </View>
           </View>
@@ -301,6 +308,16 @@ export default function ProfileSettingsScreen() {
           }}
           testID="btn-open-edit-profile"
         />
+
+        {isDoctor && (
+          <Button
+            title="Go to Doctor Dashboard"
+            variant="primary"
+            onPress={() => router.replace('/vet/dashboard')}
+            style={{ marginTop: spacing.md }}
+            testID="btn-goto-doctor-dashboard"
+          />
+        )}
       </Card>
 
       {/* 2. Biometric Authentication Card */}
@@ -568,8 +585,8 @@ export default function ProfileSettingsScreen() {
             </Text>
             <View style={styles.readOnlyRoleBadge}>
               <Badge
-                variant={user?.isVet ? 'verified' : 'scheduled'}
-                label={user?.isVet ? 'Veterinarian' : 'Pet Parent'}
+                variant={isDoctor ? 'verified' : 'scheduled'}
+                label={isDoctor ? 'Veterinarian' : 'Pet Parent'}
               />
             </View>
           </View>

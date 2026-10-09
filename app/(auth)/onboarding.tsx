@@ -17,6 +17,7 @@ import { authService } from '../../src/lib/auth/authService';
 export default function OnboardingScreen() {
   const router = useRouter();
   const { user, role } = useAuthStore();
+  const isDoctor = role === 'vet' || user?.isVet === true || user?.roles?.includes('vet');
 
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
@@ -56,7 +57,7 @@ export default function OnboardingScreen() {
         location: location.trim() || undefined,
         bio: bio.trim() || undefined,
         firstPet:
-          !skipPetOrClinic && role === 'pet_parent' && petName.trim()
+          !skipPetOrClinic && !isDoctor && petName.trim()
             ? {
                 name: petName.trim(),
                 species,
@@ -67,7 +68,7 @@ export default function OnboardingScreen() {
       });
 
       // Navigate to destination
-      if (role === 'vet') {
+      if (isDoctor) {
         router.replace('/vet/dashboard');
       } else {
         router.replace('/(tabs)');
@@ -89,12 +90,12 @@ export default function OnboardingScreen() {
         </View>
 
         <Heading level={1} style={styles.title}>
-          {step === 1 ? 'Profile Setup' : role === 'vet' ? 'Doctor Profile' : 'First Pet Setup'}
+          {step === 1 ? 'Profile Setup' : isDoctor ? 'Doctor Profile' : 'First Pet Setup'}
         </Heading>
         <Text variant="bodyMd" color={colors.muted}>
           {step === 1
             ? 'Customize your public profile and clinical location.'
-            : role === 'vet'
+            : isDoctor
               ? 'Add your clinic background to help pet parents connect with you.'
               : 'Add your first pet to start receiving personalized health reminders.'}
         </Text>
@@ -167,7 +168,7 @@ export default function OnboardingScreen() {
         </View>
       ) : (
         <View style={styles.form}>
-          {role === 'vet' ? (
+          {isDoctor ? (
             <>
               <Input
                 label="Primary Clinic / Practice Name"

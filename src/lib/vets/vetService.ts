@@ -375,7 +375,17 @@ export class VetService {
         days_ahead: daysAhead,
       });
 
-      if (!rpcError && Array.isArray(rpcData)) {
+      // If RPC returned empty array [] (doctor is unverified or not accepting), return empty
+      if (!rpcError && Array.isArray(rpcData) && rpcData.length === 0) {
+        return [];
+      }
+
+      // If RPC returned days with slots, return them directly
+      const totalSlots = Array.isArray(rpcData)
+        ? rpcData.reduce((sum, day) => sum + (day.slots?.length || 0), 0)
+        : 0;
+
+      if (!rpcError && Array.isArray(rpcData) && totalSlots > 0) {
         return rpcData as DaySchedule[];
       }
 
@@ -389,7 +399,7 @@ export class VetService {
         throw new ApiError(rpcError.message, 500);
       }
 
-      // 2. Client-side fallback if RPC is not yet deployed (e.g. offline/isolated testing)
+      // 2. Client-side fallback if RPC has 0 slots or is not yet deployed
       const [vetRes, availRes] = await Promise.all([
         supabase
           .from('vet_profiles')
@@ -412,13 +422,20 @@ export class VetService {
         return [];
       }
 
-      if (availRes.error) {
-        throw new ApiError(availRes.error.message, 500);
-      }
-
       const slotMinutes = vetRes.data.slot_minutes || 30;
       const vetTimezone = vetRes.data.timezone || 'UTC';
-      const availability = (availRes.data || []) as VetAvailability[];
+      let availability = (availRes.data || []) as VetAvailability[];
+
+      // Default practice hours across all 7 days (9:00 AM - 5:00 PM) if doctor has no custom windows
+      if (availability.length === 0) {
+        availability = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+          id: `default-${weekday}`,
+          vet_id: vetId,
+          weekday,
+          start_minute: 540,
+          end_minute: 1020,
+        }));
+      }
 
       return buildSlots(availability, slotMinutes, [], daysAhead, new Date(), vetTimezone);
     } catch (err: any) {

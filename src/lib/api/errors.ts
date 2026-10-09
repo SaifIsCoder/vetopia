@@ -76,6 +76,10 @@ export function normalizeError(error: unknown): ApiError {
     return error;
   }
 
+  const errObj = error as any;
+  const msg =
+    errObj?.message || errObj?.error_description || (typeof error === 'string' ? error : null);
+
   if (error instanceof TypeError && error.message.includes('Network')) {
     return new NetworkError();
   }
@@ -88,5 +92,5 @@ export function normalizeError(error: unknown): ApiError {
     return new ApiError(error.message, 500, 'UNKNOWN_ERROR');
   }
 
-  return new ApiError('An unexpected error occurred.', 500, 'UNKNOWN_ERROR');
+  return new ApiError(msg || 'An unexpected error occurred.', 500, errObj?.code || 'UNKNOWN_ERROR');
 }
