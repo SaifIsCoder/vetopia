@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: vetopia-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run server:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: EXPO_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: EXPO_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
