@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Eye, EyeOff, Fingerprint, Lock, Mail, AlertCircle } from 'lucide-react-native';
+import { Eye, EyeOff, Fingerprint, Lock, Mail, AlertCircle, Globe } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
 import { Text } from '../../src/components/ui/Text';
@@ -23,6 +23,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -78,14 +79,27 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setErrorMessage(null);
+    setGoogleLoading(true);
+    try {
+      await authService.signInWithGoogleOAuth('pet_parent');
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Google sign in failed. Please try again.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
-    <Screen scrollable style={styles.container}>
+    <Screen scrollable style={styles.container} testID="login-screen">
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityLabel="Back"
           accessibilityRole="button"
+          testID="btn-login-back"
         >
           <Text variant="bodyMd" color={colors.primaryDark}>
             ← Back
@@ -101,7 +115,7 @@ export default function LoginScreen() {
       </View>
 
       {errorMessage ? (
-        <Card style={styles.errorBanner}>
+        <Card style={styles.errorBanner} testID="login-error-banner">
           <AlertCircle size={20} color={colors.destructive} style={styles.errorIcon} />
           <Text variant="bodySm" color={colors.destructive} style={styles.errorText}>
             {errorMessage}
@@ -113,6 +127,7 @@ export default function LoginScreen() {
         <Input
           label="Email Address"
           placeholder="your.email@example.com"
+          testID="input-login-email"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -123,12 +138,13 @@ export default function LoginScreen() {
           }}
           error={fieldErrors.email}
           leftIcon={<Mail size={20} color={colors.muted} />}
-          editable={!loading}
+          editable={!loading && !googleLoading}
         />
 
         <Input
           label="Password"
           placeholder="••••••••"
+          testID="input-login-password"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           value={password}
@@ -151,13 +167,14 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
           }
-          editable={!loading}
+          editable={!loading && !googleLoading}
         />
 
         <TouchableOpacity
           onPress={() => router.push('/(auth)/forgot-password')}
           style={styles.forgotPassword}
           accessibilityRole="link"
+          testID="btn-forgot-password"
         >
           <Text variant="bodySm" color={colors.primaryDark} style={styles.forgotPasswordText}>
             Forgot Password?
@@ -168,9 +185,29 @@ export default function LoginScreen() {
           title="Sign In"
           onPress={handleLogin}
           loading={loading}
-          disabled={loading}
+          disabled={loading || googleLoading}
           variant="primary"
           style={styles.signInButton}
+          testID="btn-sign-in"
+        />
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text variant="caption" color={colors.muted} style={styles.dividerText}>
+            OR
+          </Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <Button
+          title="Continue with Google"
+          onPress={handleGoogleSignIn}
+          loading={googleLoading}
+          disabled={loading || googleLoading}
+          variant="outline"
+          leftIcon={<Globe size={18} color={colors.ink} />}
+          style={styles.googleButton}
+          testID="btn-google-sign-in"
         />
 
         {biometricAvailable && biometricsEnabled ? (
@@ -179,8 +216,9 @@ export default function LoginScreen() {
             onPress={handleBiometricUnlock}
             variant="outline"
             leftIcon={<Fingerprint size={20} color={colors.ink} />}
-            disabled={loading}
+            disabled={loading || googleLoading}
             style={styles.biometricButton}
+            testID="btn-biometric-unlock"
           />
         ) : null}
       </View>
@@ -189,7 +227,7 @@ export default function LoginScreen() {
         <Text variant="bodySm" color={colors.muted}>
           Don&apos;t have an account?{' '}
         </Text>
-        <TouchableOpacity onPress={() => router.push('/(auth)/register')} accessibilityRole="link">
+        <TouchableOpacity onPress={() => router.push('/(auth)/register')} accessibilityRole="link" testID="btn-goto-register">
           <Text variant="bodySm" color={colors.primaryDark} style={styles.signUpLink}>
             Sign Up
           </Text>
@@ -242,6 +280,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   signInButton: {
+    width: '100%',
+    marginBottom: spacing.sm,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    marginHorizontal: spacing.sm,
+    fontWeight: '600',
+  },
+  googleButton: {
     width: '100%',
     marginBottom: spacing.md,
   },

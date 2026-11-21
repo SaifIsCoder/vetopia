@@ -345,6 +345,9 @@ class NotificationService {
         return data.conversationId ? `/messages/${data.conversationId}` : '/(tabs)/messages';
       case 'prescription_issued':
         return data.prescriptionId ? `/prescriptions/${data.prescriptionId}` : '/(tabs)/care';
+      case 'club_post_comment':
+      case 'club_post_reaction':
+        return data.postId ? `/clubs/post/${data.postId}` : '/clubs';
       default:
         return '/(tabs)';
     }

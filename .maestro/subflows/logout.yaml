@@ -1,0 +1,31 @@
+# ============================================================
+# Subflow: Logout
+# ============================================================
+# Navigates to settings/profile and signs out.
+
+appId: com.vetopia.app
+---
+
+# Navigate to Care tab → Settings
+- tapOn:
+    text: "Care"
+- assertVisible:
+    id: "btn-care-settings"
+- tapOn:
+    id: "btn-care-settings"
+
+# Tap Sign Out
+- scrollUntilVisible:
+    element:
+      text: "(?i).*SIGN OUT.*"
+    direction: DOWN
+- tapOn:
+    text: "(?i).*SIGN OUT.*"
+
+# Confirm sign out in alert dialog
+- tapOn:
+    text: "(?i)SIGN OUT"
+
+# Should return to welcome screen
+- assertVisible:
+    text: "(?i).*ALREADY HAVE AN ACCOUNT.*|.*GET STARTED.*|.*Vetopia.*"

@@ -77,6 +77,7 @@ export default function AppointmentsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="View upcoming appointments"
+          testID="tab-upcoming-appointments"
           style={[styles.segmentButton, activeTab === 'upcoming' && styles.segmentActive]}
           onPress={() => setActiveTab('upcoming')}
         >
@@ -92,6 +93,7 @@ export default function AppointmentsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="View past consultations"
+          testID="tab-past-appointments"
           style={[styles.segmentButton, activeTab === 'past' && styles.segmentActive]}
           onPress={() => setActiveTab('past')}
         >
@@ -108,8 +110,9 @@ export default function AppointmentsScreen() {
   );
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={styles.screen} testID="appointments-screen">
       <FlatList
+        testID="appointments-flatlist"
         data={appointments || []}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
@@ -161,6 +164,10 @@ export default function AppointmentsScreen() {
         }}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews={true}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

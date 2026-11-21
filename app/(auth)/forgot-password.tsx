@@ -44,7 +44,7 @@ export default function ForgotPasswordScreen() {
 
   if (sent) {
     return (
-      <Screen style={styles.container}>
+      <Screen style={styles.container} testID="forgot-password-sent-screen">
         <View style={styles.confirmationContent}>
           <View style={styles.iconCircle}>
             <CheckCircle2 size={56} color={colors.primaryDark} />
@@ -65,6 +65,7 @@ export default function ForgotPasswordScreen() {
             onPress={() => router.replace('/(auth)/login')}
             variant="primary"
             style={styles.actionButton}
+            testID="btn-return-sign-in"
           />
           <Button
             title="Resend Link"
@@ -74,6 +75,7 @@ export default function ForgotPasswordScreen() {
             }}
             variant="ghost"
             style={styles.actionButton}
+            testID="btn-resend-link"
           />
         </View>
       </Screen>
@@ -81,13 +83,14 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <Screen style={styles.container}>
+    <Screen style={styles.container} testID="forgot-password-screen">
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityLabel="Back"
           accessibilityRole="button"
+          testID="btn-forgot-back"
         >
           <Text variant="bodyMd" color={colors.primaryDark}>
             ← Back
@@ -116,6 +119,7 @@ export default function ForgotPasswordScreen() {
         <Input
           label="Registered Email"
           placeholder="your.email@example.com"
+          testID="input-forgot-email"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -136,6 +140,7 @@ export default function ForgotPasswordScreen() {
           disabled={loading}
           variant="primary"
           style={styles.sendButton}
+          testID="btn-send-recovery"
         />
       </View>
     </Screen>

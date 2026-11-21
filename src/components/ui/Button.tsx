@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
 
 const sizeStyles: Record<ButtonSize, ViewStyle> = {
   sm: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },

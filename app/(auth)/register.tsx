@@ -14,6 +14,7 @@ import {
   CheckSquare,
   Square,
   DollarSign,
+  Globe,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -40,6 +41,7 @@ export default function RegisterScreen() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -161,14 +163,27 @@ export default function RegisterScreen() {
     }
   };
 
+  const handleGoogleRegister = async () => {
+    setErrorMessage(null);
+    setGoogleLoading(true);
+    try {
+      await authService.signInWithGoogleOAuth(role);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Google registration failed. Please try again.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
-    <Screen scrollable style={styles.container}>
+    <Screen scrollable style={styles.container} testID="register-screen">
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityLabel="Back"
           accessibilityRole="button"
+          testID="btn-register-back"
         >
           <Text variant="bodyMd" color={colors.primaryDark}>
             ← Back
@@ -195,6 +210,7 @@ export default function RegisterScreen() {
             activeOpacity={0.8}
             accessibilityRole="radio"
             accessibilityState={{ selected: role === 'pet_parent' }}
+            testID="role-pet-parent"
           >
             <Heart size={24} color={role === 'pet_parent' ? colors.primaryDark : colors.muted} />
             <Text
@@ -214,6 +230,7 @@ export default function RegisterScreen() {
             activeOpacity={0.8}
             accessibilityRole="radio"
             accessibilityState={{ selected: role === 'vet' }}
+            testID="role-vet"
           >
             <Stethoscope size={24} color={role === 'vet' ? colors.primaryDark : colors.muted} />
             <Text
@@ -250,7 +267,7 @@ export default function RegisterScreen() {
       ) : null}
 
       {errorMessage ? (
-        <Card style={styles.errorBanner}>
+        <Card style={styles.errorBanner} testID="register-error-banner">
           <AlertCircle size={20} color={colors.destructive} style={styles.errorIcon} />
           <Text variant="bodySm" color={colors.destructive} style={styles.errorText}>
             {errorMessage}
@@ -262,6 +279,7 @@ export default function RegisterScreen() {
         <Input
           label="Full Name"
           placeholder="e.g. Dr. Sarah Jenkins"
+          testID="input-register-name"
           autoCapitalize="words"
           value={fullName}
           onChangeText={(text) => {
@@ -276,6 +294,7 @@ export default function RegisterScreen() {
         <Input
           label="Email Address"
           placeholder="your.email@example.com"
+          testID="input-register-email"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -314,6 +333,7 @@ export default function RegisterScreen() {
         <Input
           label="Password"
           placeholder="Min. 6 characters"
+          testID="input-register-password"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           value={password}
@@ -342,6 +362,7 @@ export default function RegisterScreen() {
         <Input
           label="Confirm Password"
           placeholder="Re-enter password"
+          testID="input-register-confirm-password"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           value={confirmPassword}
@@ -358,6 +379,7 @@ export default function RegisterScreen() {
         {/* Terms Agreement */}
         <TouchableOpacity
           style={styles.termsRow}
+          testID="checkbox-terms"
           onPress={() => {
             setAgreedToTerms(!agreedToTerms);
             if (fieldErrors.terms) setFieldErrors((prev) => ({ ...prev, terms: undefined }));
@@ -385,9 +407,29 @@ export default function RegisterScreen() {
           title="Create Account"
           onPress={handleRegister}
           loading={loading}
-          disabled={loading}
+          disabled={loading || googleLoading}
           variant="primary"
           style={styles.registerButton}
+          testID="btn-create-account"
+        />
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text variant="caption" color={colors.muted} style={styles.dividerText}>
+            OR
+          </Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <Button
+          title="Sign Up with Google"
+          onPress={handleGoogleRegister}
+          loading={googleLoading}
+          disabled={loading || googleLoading}
+          variant="outline"
+          leftIcon={<Globe size={18} color={colors.ink} />}
+          style={styles.googleButton}
+          testID="btn-google-register"
         />
       </View>
 
@@ -395,7 +437,7 @@ export default function RegisterScreen() {
         <Text variant="bodySm" color={colors.muted}>
           Already have an account?{' '}
         </Text>
-        <TouchableOpacity onPress={() => router.push('/(auth)/login')} accessibilityRole="link">
+        <TouchableOpacity onPress={() => router.push('/(auth)/login')} accessibilityRole="link" testID="btn-goto-login">
           <Text variant="bodySm" color={colors.primaryDark} style={styles.signInLink}>
             Sign In
           </Text>
@@ -518,6 +560,25 @@ const styles = StyleSheet.create({
   registerButton: {
     width: '100%',
     marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    marginHorizontal: spacing.sm,
+    fontWeight: '600',
+  },
+  googleButton: {
+    width: '100%',
+    marginBottom: spacing.md,
   },
   footer: {
     flexDirection: 'row',

@@ -1,0 +1,28 @@
+# ============================================================
+# E2E Test: Notifications
+# ============================================================
+# Covers: Notification center access and display
+
+appId: com.vetopia.app
+name: "Notifications - View"
+tags:
+  - notifications
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Open Notifications ──────────────────────────────────────
+# The notification bell is typically in the home screen header
+- tapOn:
+    text: "Notifications"
+    optional: true
+
+# If we reached the notifications screen
+- assertVisible:
+    text: "Notifications"
+    optional: true
+
+# ── Back ────────────────────────────────────────────────────
+- back

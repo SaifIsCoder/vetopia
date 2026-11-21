@@ -1,0 +1,43 @@
+# ============================================================
+# E2E Test: Auth Flow — Logout & Session
+# ============================================================
+# Covers: Sign out, session clearing, redirect to welcome
+
+appId: com.vetopia.app
+name: "Auth - Logout & Session"
+tags:
+  - auth
+  - smoke
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Settings ────────────────────────────────────
+- tapOn:
+    text: "Care"
+- tapOn:
+    id: "btn-care-settings"
+
+# ── Verify Settings Screen ──────────────────────────────────
+- assertVisible:
+    id: "profile-user-name"
+- assertVisible:
+    id: "profile-user-email"
+
+# ── Sign Out ────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "(?i).*SIGN OUT.*"
+    direction: DOWN
+- tapOn:
+    text: "(?i).*SIGN OUT.*"
+
+# Confirm in alert
+- tapOn:
+    text: "(?i)SIGN OUT"
+
+# Should return to welcome screen
+- assertVisible:
+    text: "(?i).*ALREADY HAVE AN ACCOUNT.*|.*GET STARTED.*|.*Vetopia.*"

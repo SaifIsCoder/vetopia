@@ -48,6 +48,7 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
   } = options;
 
   const roomRef = useRef<Room | null>(null);
+  const [room, setRoom] = useState<Room | null>(null);
 
   const [connectionState, setConnectionState] = useState<ConnectionState>(
     ConnectionState.Disconnected,
@@ -104,6 +105,7 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
         });
 
       roomRef.current = room;
+      setRoom(room);
     }
     return roomRef.current;
   }, [onDisconnected]);
@@ -170,6 +172,7 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
       if (roomRef.current) {
         await roomRef.current.disconnect();
         roomRef.current = null;
+        setRoom(null);
       }
       if (Platform.OS === 'ios') {
         await AudioSession.stopAudioSession();
@@ -247,16 +250,22 @@ export function useLiveKitRoom(options: UseLiveKitRoomOptions = {}) {
 
   // Auto connect if requested
   useEffect(() => {
+    let active = true;
     if (autoConnect && serverUrl && token) {
-      connect();
+      void Promise.resolve().then(() => {
+        if (active) {
+          connect();
+        }
+      });
     }
     return () => {
+      active = false;
       disconnect();
     };
   }, [autoConnect, serverUrl, token, connect, disconnect]);
 
   return {
-    room: roomRef.current,
+    room,
     connectionState,
     localVideoTrack,
     remoteVideoTrack,

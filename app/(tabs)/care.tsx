@@ -10,6 +10,7 @@ import {
   ChevronRight,
   PawPrint,
   AlertCircle,
+  Users,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -201,6 +202,29 @@ export default function CareScreen() {
                 <Heading level={4}>Digital Prescriptions Archive</Heading>
                 <Text variant="bodySm" color={colors.muted}>
                   Medication regimens, dosage instructions & signed PDF exports
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push('/community' as any)}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Community Hub"
+          testID="btn-care-community-hub"
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: '#F0FDF4' }]}>
+                <Users size={20} color="#16A34A" />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Community Hub</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Clubs, discussions, veterinary blogs & community events
                 </Text>
               </View>
               <ChevronRight size={18} color={colors.muted} />

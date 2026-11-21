@@ -13,6 +13,7 @@ export const Text: React.FC<TextProps> = ({
   variant = 'bodyMd',
   color = colors.ink,
   align = 'left',
+  maxFontSizeMultiplier = 1.3,
   style,
   children,
   ...rest
@@ -20,7 +21,11 @@ export const Text: React.FC<TextProps> = ({
   const typographyStyle = typography[variant] || typography.bodyMd;
 
   return (
-    <RNText style={[typographyStyle, { color, textAlign: align }, style]} {...rest}>
+    <RNText
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+      style={[typographyStyle, { color, textAlign: align }, style]}
+      {...rest}
+    >
       {children}
     </RNText>
   );

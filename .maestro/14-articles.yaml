@@ -1,0 +1,37 @@
+# ============================================================
+# E2E Test: Articles
+# ============================================================
+# Covers: Article directory, article detail, article creation
+
+appId: com.vetopia.app
+name: "Articles - Browse & Read"
+tags:
+  - articles
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Articles ────────────────────────────────────
+# Articles are accessible from Community Hub
+- tapOn:
+    text: "Care"
+- tapOn:
+    id: "btn-care-community-hub"
+- assertVisible:
+    text: "Community"
+
+# Look for articles section
+- tapOn:
+    text: "Articles"
+    optional: true
+
+# ── Articles Directory ──────────────────────────────────────
+- assertVisible:
+    id: "articles-directory-screen"
+    optional: true
+
+# ── Back ────────────────────────────────────────────────────
+- back
+- back

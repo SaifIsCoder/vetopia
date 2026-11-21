@@ -1,0 +1,90 @@
+# ============================================================
+# Subflow: Login as Pet Parent
+# ============================================================
+# Reusable login flow. Expects the app to be on the welcome or login screen.
+# Uses test credentials from config/test-data.yaml.
+#
+# Usage in a parent flow:
+#   - runFlow: subflows/login.yaml
+#     env:
+#       EMAIL: "custom@email.com"     # optional override
+#       PASSWORD: "CustomPass123!"    # optional override
+
+appId: com.vetopia.app
+---
+
+# If not on Welcome screen and not on Home screen, navigate back towards main tabs
+- runFlow:
+    when:
+      notVisible: "Home"
+    commands:
+      - runFlow:
+          when:
+            notVisible: "(?i).*already have an account.*"
+          commands:
+            - back
+            - back
+
+# Perform login if on Welcome screen
+- runFlow:
+    when:
+      visible:
+        text: "(?i).*already have an account.*"
+    commands:
+      - tapOn:
+          text: "(?i).*already have an account.*"
+
+# Perform login if on Welcome Back screen
+- runFlow:
+    when:
+      visible:
+        text: "Welcome Back"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "(?i)your.email@example.com"
+          commands:
+            - tapOn:
+                text: "(?i)your.email@example.com"
+            - inputText: "e2e-petparent@vetopia.test"
+            - tapOn:
+                text: "••••••••"
+            - inputText: "TestPass123!"
+            - hideKeyboard
+            - tapOn:
+                text: "(?i)SIGN IN"
+
+      - runFlow:
+          when:
+            notVisible:
+              text: "(?i)your.email@example.com"
+          commands:
+            - tapOn:
+                below: "Email Address"
+            - eraseText: 50
+            - inputText: "e2e-petparent@vetopia.test"
+            - tapOn:
+                below: "Password"
+            - eraseText: 50
+            - inputText: "TestPass123!"
+            - hideKeyboard
+            - tapOn:
+                text: "(?i)SIGN IN"
+
+      - extendedWaitUntil:
+          visible:
+            text: "Home"
+          timeout: 10000
+
+# Ensure we are on Home tab
+- runFlow:
+    when:
+      visible: "Home"
+    commands:
+      - tapOn:
+          text: "Home"
+
+# Verify Home screen is visible
+- assertVisible:
+    text: "Home"

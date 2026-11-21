@@ -81,7 +81,7 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <Screen scrollable style={styles.container}>
+    <Screen scrollable style={styles.container} testID="onboarding-screen">
       <View style={styles.header}>
         <View style={styles.stepBadge}>
           <Text variant="caption" color={colors.primaryDark} style={styles.stepBadgeText}>
@@ -120,6 +120,7 @@ export default function OnboardingScreen() {
           <Input
             label="Display Name"
             placeholder="Your Name"
+            testID="input-onboard-name"
             value={fullName}
             onChangeText={setFullName}
             leftIcon={<User size={20} color={colors.muted} />}
@@ -129,6 +130,7 @@ export default function OnboardingScreen() {
           <Input
             label="Unique Username"
             placeholder="e.g. sarah_vet"
+            testID="input-onboard-username"
             autoCapitalize="none"
             value={username}
             onChangeText={setUsername}
@@ -143,6 +145,7 @@ export default function OnboardingScreen() {
           <Input
             label="Location / City"
             placeholder="e.g. London, UK or New York, USA"
+            testID="input-onboard-location"
             value={location}
             onChangeText={setLocation}
             leftIcon={<MapPin size={20} color={colors.muted} />}
@@ -154,12 +157,14 @@ export default function OnboardingScreen() {
             onPress={handleNextStep}
             variant="primary"
             style={styles.continueButton}
+            testID="btn-onboard-continue"
           />
 
           <TouchableOpacity
             onPress={() => handleComplete(true)}
             style={styles.skipButton}
             accessibilityRole="button"
+            testID="btn-onboard-skip"
           >
             <Text variant="bodySm" color={colors.muted}>
               Skip setup for now
@@ -195,6 +200,7 @@ export default function OnboardingScreen() {
               <Input
                 label="Pet Name"
                 placeholder="e.g. Bella, Max"
+                testID="input-onboard-pet-name"
                 value={petName}
                 onChangeText={setPetName}
                 leftIcon={<PawPrint size={20} color={colors.muted} />}
@@ -252,12 +258,14 @@ export default function OnboardingScreen() {
             disabled={loading}
             variant="primary"
             style={styles.continueButton}
+            testID="btn-onboard-complete"
           />
 
           <TouchableOpacity
             onPress={() => handleComplete(true)}
             style={styles.skipButton}
             accessibilityRole="button"
+            testID="btn-onboard-skip-step2"
           >
             <Text variant="bodySm" color={colors.muted}>
               Skip for now

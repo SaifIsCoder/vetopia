@@ -170,6 +170,46 @@ export class AppointmentService {
   }
 
   /**
+   * Retrieve consultation and appointment history for a specific pet (Pet Passport integration).
+   */
+  public async getAppointmentsByPetId(petId: string): Promise<Appointment[]> {
+    if (!petId) {
+      throw new ValidationError('Pet ID is required.');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(
+          `
+          *,
+          vet:vet_profiles (
+            id,
+            name,
+            specialty,
+            flag,
+            country,
+            img_key,
+            rating,
+            verified
+          )
+        `,
+        )
+        .eq('pet_id', petId)
+        .order('starts_at', { ascending: false });
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+
+      return (data || []) as Appointment[];
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof ValidationError) throw err;
+      throw new ApiError(err?.message || 'Failed to load pet consultations.', 500);
+    }
+  }
+
+  /**
    * Retrieve a single appointment by ID.
    */
   public async getAppointmentById(appointmentId: string): Promise<Appointment> {

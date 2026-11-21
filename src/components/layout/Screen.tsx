@@ -14,6 +14,7 @@ export interface ScreenProps {
   contentContainerStyle?: ViewStyle;
   style?: ViewStyle;
   scrollViewProps?: ScrollViewProps;
+  testID?: string;
 }
 
 export const Screen: React.FC<ScreenProps> = ({
@@ -26,9 +27,10 @@ export const Screen: React.FC<ScreenProps> = ({
   contentContainerStyle,
   style,
   scrollViewProps,
+  testID,
 }) => {
   return (
-    <SafeAreaView backgroundColor={backgroundColor} style={style}>
+    <SafeAreaView backgroundColor={backgroundColor} style={style} testID={testID}>
       <StatusBar barStyle="dark-content" backgroundColor={backgroundColor} />
       {header}
       {scrollable ? (

@@ -1,7 +1,14 @@
+import * as Linking from 'expo-linking';
 import { authService } from '../../src/lib/auth/authService';
 import { supabase } from '../../src/lib/supabase/client';
 import { useAuthStore } from '../../src/store/authStore';
 import { AuthError, ValidationError, ApiError, NetworkError } from '../../src/lib/api/errors';
+
+// Mock Expo Linking
+jest.mock('expo-linking', () => ({
+  createURL: jest.fn((path: string) => `vetopia://${path}`),
+  openURL: jest.fn().mockResolvedValue(true),
+}));
 
 // Mock Supabase Client
 jest.mock('../../src/lib/supabase/client', () => {
@@ -10,6 +17,7 @@ jest.mock('../../src/lib/supabase/client', () => {
       auth: {
         signUp: jest.fn(),
         signInWithPassword: jest.fn(),
+        signInWithOAuth: jest.fn(),
         signOut: jest.fn(),
         resetPasswordForEmail: jest.fn(),
         refreshSession: jest.fn(),
@@ -397,6 +405,141 @@ describe('AuthService (Supabase Integration)', () => {
         }),
       ).rejects.toThrow(NetworkError);
     });
+
+    test('Pre-flight blocks login attempt when account is locked (5 failed attempts / 15 mins)', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: {
+          locked: true,
+          remaining_seconds: 720,
+          message: 'Account is temporarily locked for 720 more seconds due to 5 consecutive failed login attempts.',
+        },
+        error: null,
+      });
+
+      await expect(
+        authService.login({
+          email: 'locked@example.com',
+          password: 'Password123!',
+        }),
+      ).rejects.toThrow(/temporarily locked for 15 minutes|720 more seconds/);
+
+      expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
+    });
+
+    test('Records failed login attempt and triggers 15-minute lockout on 5th consecutive failure', async () => {
+      // 1. Pre-flight check: not locked yet
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: { locked: false },
+        error: null,
+      });
+
+      // 2. Sign in fails with invalid credentials
+      (supabase.auth.signInWithPassword as jest.Mock).mockResolvedValueOnce({
+        data: { user: null, session: null },
+        error: { message: 'Invalid login credentials', status: 400 },
+      });
+
+      // 3. record_login_attempt returns lockout triggered (5th failure)
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: {
+          locked: true,
+          remaining_seconds: 900,
+          failed_count: 5,
+        },
+        error: null,
+      });
+
+      await expect(
+        authService.login({
+          email: 'bruteforce@example.com',
+          password: 'WrongPassword!',
+        }),
+      ).rejects.toThrow(/locked for 15 minutes due to 5 consecutive failed login attempts/);
+
+      expect(supabase.rpc).toHaveBeenCalledWith('record_login_attempt', {
+        p_email: 'bruteforce@example.com',
+        p_success: false,
+      });
+    });
+
+    test('Resets failed attempt counter upon successful login', async () => {
+      // 1. Pre-flight check: not locked
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: { locked: false },
+        error: null,
+      });
+
+      // 2. Sign in succeeds
+      (supabase.auth.signInWithPassword as jest.Mock).mockResolvedValueOnce({
+        data: {
+          user: { id: 'u1', email: 'recovered@example.com' },
+          session: {
+            access_token: 'valid-token',
+            refresh_token: 'valid-refresh',
+            user: { id: 'u1', email: 'recovered@example.com' },
+          },
+        },
+        error: null,
+      });
+
+      // 3. record_login_attempt success reset
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: { allowed: true, locked: false, failed_count: 0 },
+        error: null,
+      });
+
+      (supabase.from as jest.Mock).mockImplementation(() => ({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: { id: 'u1', full_name: 'Recovered User' },
+            }),
+          }),
+        }),
+      }));
+
+      await authService.login({
+        email: 'recovered@example.com',
+        password: 'CorrectPassword123!',
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith('record_login_attempt', {
+        p_email: 'recovered@example.com',
+        p_success: true,
+      });
+    });
+  });
+
+  describe('Google OAuth Flow (Phase C)', () => {
+    test('Initiates Google OAuth with pet_parent role and opens auth URL', async () => {
+      (supabase.auth.signInWithOAuth as jest.Mock).mockResolvedValueOnce({
+        data: { url: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=...' },
+        error: null,
+      });
+
+      const result = await authService.signInWithGoogleOAuth('pet_parent');
+
+      expect(supabase.auth.signInWithOAuth).toHaveBeenCalledWith({
+        provider: 'google',
+        options: expect.objectContaining({
+          redirectTo: 'vetopia://auth/callback',
+          queryParams: expect.objectContaining({ role: 'pet_parent' }),
+        }),
+      });
+      expect(result.url).toContain('https://accounts.google.com');
+      expect(Linking.openURL).toHaveBeenCalledWith(result.url);
+    });
+
+    test('Handles OAuth error gracefully', async () => {
+      (supabase.auth.signInWithOAuth as jest.Mock).mockResolvedValueOnce({
+        data: null,
+        error: { message: 'OAuth configuration disabled', status: 400 },
+      });
+
+      await expect(authService.signInWithGoogleOAuth('vet')).rejects.toThrow(
+        'OAuth configuration disabled',
+      );
+    });
   });
 
   describe('Password Reset (Forgot Password)', () => {
@@ -437,6 +580,34 @@ describe('AuthService (Supabase Integration)', () => {
       expect(supabase.auth.signOut).toHaveBeenCalled();
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
       expect(useAuthStore.getState().user).toBeNull();
+    });
+
+    test('deleteAccount calls delete_user_account RPC and wipes session', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({ data: true, error: null });
+      (supabase.auth.signOut as jest.Mock).mockResolvedValueOnce({ error: null });
+
+      useAuthStore.getState().setSession({
+        access_token: 'token-del',
+        refresh_token: 'token-del',
+        user: { id: 'u-del' },
+      } as any);
+
+      await authService.deleteAccount();
+
+      expect(supabase.rpc).toHaveBeenCalledWith('delete_user_account');
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+      expect(useAuthStore.getState().user).toBeNull();
+    });
+
+    test('deleteAccount handles RPC error and throws ApiError', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Database constraint failure' },
+      });
+
+      await expect(authService.deleteAccount()).rejects.toThrow(
+        'Failed to delete user account: Database constraint failure',
+      );
     });
   });
 

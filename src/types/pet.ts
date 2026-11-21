@@ -58,3 +58,29 @@ export const SEX_OPTIONS: { label: string; value: PetSex }[] = [
   { label: 'Spayed Female', value: 'spayed_female' },
   { label: 'Unknown', value: 'unknown' },
 ];
+
+export interface PetVaccination {
+  id: string;
+  pet_id: string;
+  vaccine_name: string;
+  administered_at: string; // YYYY-MM-DD
+  next_due_at?: string | null; // YYYY-MM-DD
+  batch_number?: string | null;
+  administered_by?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateVaccinationDTO {
+  pet_id: string;
+  vaccine_name: string;
+  administered_at: string; // YYYY-MM-DD
+  next_due_at?: string | null; // YYYY-MM-DD
+  batch_number?: string | null;
+  administered_by?: string | null;
+  notes?: string | null;
+}
+
+export type VaccinationStatus = 'up_to_date' | 'due_soon' | 'overdue';
+

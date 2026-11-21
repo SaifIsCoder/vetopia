@@ -50,23 +50,8 @@ export default function ConsultRoomScreen() {
   const [hasPermissions, setHasPermissions] = useState(true);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
-  // Network Reconnection Timer tracking
-  useEffect(() => {
-    if (!isReconnecting) {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setReconnectSeconds((prev) => prev + 1);
-    }, 1000);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [isReconnecting]);
-
   // Connect to LiveKit Room
-  const handleEnterConsultation = async () => {
+  const handleEnterConsultation = useCallback(async () => {
     if (!id) return;
 
     if (isVet && user?.isVetVerified === false) {
@@ -92,7 +77,7 @@ export default function ConsultRoomScreen() {
       const msg = err?.message || 'Failed to establish connection with LiveKit consultation room.';
       Alert.alert('Connection Failed', msg, [{ text: 'OK' }]);
     }
-  };
+  }, [id, isVet, user?.isVetVerified, router]);
 
   // End Consultation / Leave Room (FR-TELE-003)
   const handleEndCall = useCallback(() => {
@@ -159,14 +144,43 @@ export default function ConsultRoomScreen() {
   }, [id, isVet, completeMutation, router, liveKit]);
 
   // Retry connection
-  const handleRetryConnection = () => {
+  const handleRetryConnection = useCallback(() => {
     setReconnectSeconds(0);
     if (tokenData?.server_url && tokenData?.token) {
       liveKit.connect(tokenData.server_url, tokenData.token);
     } else {
       handleEnterConsultation();
     }
-  };
+  }, [tokenData, liveKit, handleEnterConsultation]);
+
+  // Network Reconnection Timer tracking (SRS NFR-REL: 20-second reconnection window)
+  useEffect(() => {
+    if (!isReconnecting) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setReconnectSeconds((prev) => {
+        const next = prev + 1;
+        if (next === 20) {
+          Alert.alert(
+            'Connection Timed Out',
+            'Unable to restore RTC media stream after 20 seconds. Would you like to retry reconnecting or exit the room?',
+            [
+              { text: 'Retry', onPress: handleRetryConnection },
+              { text: 'Leave Room', style: 'destructive', onPress: handleEndCall },
+            ],
+          );
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+      setReconnectSeconds(0);
+    };
+  }, [isReconnecting, handleRetryConnection, handleEndCall]);
 
   // 1. Loading State
   if (isLoading) {

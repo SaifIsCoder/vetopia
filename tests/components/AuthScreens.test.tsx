@@ -4,6 +4,7 @@ import WelcomeScreen from '../../app/(auth)/welcome';
 import LoginScreen from '../../app/(auth)/login';
 import RegisterScreen from '../../app/(auth)/register';
 import ForgotPasswordScreen from '../../app/(auth)/forgot-password';
+import { authService } from '../../src/lib/auth/authService';
 
 // Mock expo-router
 jest.mock('expo-router', () => ({
@@ -20,6 +21,7 @@ jest.mock('../../src/lib/auth/authService', () => ({
     login: jest.fn(),
     register: jest.fn(),
     requestPasswordReset: jest.fn(),
+    signInWithGoogleOAuth: jest.fn().mockResolvedValue({ url: 'https://accounts.google.com' }),
   },
 }));
 
@@ -61,6 +63,16 @@ describe('Authentication Screen Components', () => {
 
       expect(getByText('Email address is required.')).toBeTruthy();
     });
+
+    test('Renders Continue with Google button and triggers Google OAuth', () => {
+      const { getByText } = render(<LoginScreen />);
+
+      const googleButton = getByText('Continue with Google');
+      expect(googleButton).toBeTruthy();
+      fireEvent.press(googleButton);
+
+      expect(authService.signInWithGoogleOAuth).toHaveBeenCalledWith('pet_parent');
+    });
   });
 
   describe('RegisterScreen', () => {
@@ -80,6 +92,19 @@ describe('Authentication Screen Components', () => {
       // Specialty and fee should now be present
       expect(getByText('Primary Specialty')).toBeTruthy();
       expect(getByText('Standard Consultation Fee (USD)')).toBeTruthy();
+    });
+
+    test('Renders Sign Up with Google button and triggers OAuth with selected role', () => {
+      const { getByText } = render(<RegisterScreen />);
+
+      // Select Veterinarian role
+      fireEvent.press(getByText('Veterinarian'));
+
+      const googleBtn = getByText('Sign Up with Google');
+      expect(googleBtn).toBeTruthy();
+      fireEvent.press(googleBtn);
+
+      expect(authService.signInWithGoogleOAuth).toHaveBeenCalledWith('vet');
     });
   });
 

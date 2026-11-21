@@ -1,0 +1,36 @@
+# ============================================================
+# Maestro E2E — Shared Test Data & Fixtures
+# ============================================================
+# Centralized test credentials and data used across all flows.
+# Override per-environment via Maestro env vars if needed.
+
+# Valid pet parent test account (must exist in Supabase)
+TEST_USER_EMAIL: "e2e-petparent@vetopia.test"
+TEST_USER_PASSWORD: "TestPass123!"
+TEST_USER_NAME: "E2E Pet Parent"
+
+# Valid vet test account (must exist in Supabase)
+TEST_VET_EMAIL: "e2e-vet@vetopia.test"
+TEST_VET_PASSWORD: "TestPass123!"
+TEST_VET_NAME: "Dr. E2E Veterinarian"
+
+# Registration test data (unique per run — append timestamp in flow)
+REG_NAME: "Test NewUser"
+REG_EMAIL_PREFIX: "e2e-newuser-"
+REG_EMAIL_DOMAIN: "@vetopia.test"
+REG_PASSWORD: "NewPass789!"
+
+# Pet test data
+PET_NAME: "Buddy"
+PET_SPECIES: "Dog"
+PET_BREED: "Golden Retriever"
+PET_AGE: "3 years"
+
+# Event test data
+EVENT_TITLE: "E2E Test Pet Meetup"
+EVENT_DESCRIPTION: "Automated E2E event for testing"
+
+# Article test data
+ARTICLE_TITLE: "E2E Test Article"
+ARTICLE_SUMMARY: "Test article created by E2E automation"
+ARTICLE_CONTENT: "This is automated test content for the article module."

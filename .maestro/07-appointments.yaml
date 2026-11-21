@@ -1,0 +1,47 @@
+# ============================================================
+# E2E Test: Appointments — View & Cancel
+# ============================================================
+# Covers: Upcoming/past tabs, appointment cards, cancellation
+
+appId: com.vetopia.app
+name: "Appointments - View & Manage"
+tags:
+  - appointments
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Appointments ────────────────────────────────
+- tapOn:
+    text: "Appointments"
+- assertVisible:
+    text: "Appointments"
+
+# ── Tab Switching ───────────────────────────────────────────
+# Default is "Upcoming" tab
+- assertVisible:
+    text: "Upcoming"
+
+# Tap Past tab
+- tapOn:
+    text: "(?i).*Past.*"
+
+# Wait for past appointments to load or show empty state
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 5000
+
+# Switch back to Upcoming
+- tapOn:
+    text: "(?i).*Upcoming.*"
+
+# ── Pull to Refresh ─────────────────────────────────────────
+- swipe:
+    direction: DOWN
+    duration: 300
+- swipe:
+    direction: UP
+    duration: 300

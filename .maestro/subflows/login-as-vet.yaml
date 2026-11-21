@@ -1,0 +1,40 @@
+# ============================================================
+# Subflow: Login as Veterinarian
+# ============================================================
+# Logs in with vet credentials and expects redirect to vet dashboard.
+
+appId: com.vetopia.app
+---
+
+# Only execute login if not already on Dashboard
+- runFlow:
+    when:
+      notVisible: "Dashboard"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "(?i).*already have an account.*"
+          commands:
+            - tapOn:
+                text: "(?i).*already have an account.*"
+
+      - assertVisible:
+          text: "Welcome Back"
+
+      - tapOn:
+          text: "(?i)your.email@example.com|.*@.*"
+      - inputText: "e2e-vet@vetopia.test"
+
+      - tapOn:
+          below: "Password"
+      - inputText: "TestPass123!"
+
+      - hideKeyboard
+
+      - tapOn:
+          text: "(?i)SIGN IN"
+
+# Vet users are redirected to the vet dashboard
+- assertVisible:
+    text: "Dashboard"

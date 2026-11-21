@@ -1,0 +1,47 @@
+# ============================================================
+# E2E Test: Events
+# ============================================================
+# Covers: Event directory, event detail, tabs, categories
+
+appId: com.vetopia.app
+name: "Events - Browse & View"
+tags:
+  - events
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Events ──────────────────────────────────────
+- tapOn:
+    text: "Care"
+- tapOn:
+    id: "btn-care-community-hub"
+- assertVisible:
+    text: "Community"
+
+# Look for events
+- tapOn:
+    text: "Events"
+    optional: true
+
+# ── Events Directory ────────────────────────────────────────
+- assertVisible:
+    id: "events-directory-screen"
+    optional: true
+
+# ── Tab Switching ───────────────────────────────────────────
+- tapOn:
+    id: "tab-upcoming-events"
+    optional: true
+- tapOn:
+    id: "tab-past-events"
+    optional: true
+- tapOn:
+    id: "tab-upcoming-events"
+    optional: true
+
+# ── Back ────────────────────────────────────────────────────
+- back
+- back

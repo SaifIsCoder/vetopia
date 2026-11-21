@@ -12,6 +12,7 @@ import {
   Star,
   Clock,
   Video,
+  Users,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -369,6 +370,30 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Pet Community Hub Banner */}
+      <TouchableOpacity
+        onPress={() => router.push('/community' as any)}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Explore Pet Community Hub"
+        testID="banner-community-hub"
+      >
+        <Card style={styles.communityBanner} elevated={false}>
+          <View style={styles.communityBannerIconBox}>
+            <Users size={20} color="#16A34A" />
+          </View>
+          <View style={styles.bannerContent}>
+            <Heading level={4} style={styles.bannerTitle}>
+              Pet Community Hub
+            </Heading>
+            <Text variant="bodySm" color={colors.inkSoft}>
+              6 animal clubs, discussions, blogs & meetups.
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.ink} />
+        </Card>
+      </TouchableOpacity>
+
       {/* Featured Veterinarians */}
       {featuredVets.length > 0 && (
         <View style={styles.section}>
@@ -445,6 +470,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.md,
     marginBottom: spacing.xl,
+  },
+  communityBanner: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  communityBannerIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
   },
   bannerIconContainer: {
     width: 36,

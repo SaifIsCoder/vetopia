@@ -1,0 +1,35 @@
+# ============================================================
+# E2E Test: Clubs (Social)
+# ============================================================
+# Covers: Club directory, club detail, post creation, comments
+
+appId: com.vetopia.app
+name: "Clubs - Social Flow"
+tags:
+  - clubs
+  - community
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Community Hub ───────────────────────────────
+- tapOn:
+    id: "banner-community-hub"
+- assertVisible:
+    text: "Community"
+
+# ── Navigate to Clubs ───────────────────────────────────────
+- tapOn:
+    text: "Clubs"
+    optional: true
+
+# Wait for clubs list or empty state
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 8000
+
+# ── Back to Home ────────────────────────────────────────────
+- back

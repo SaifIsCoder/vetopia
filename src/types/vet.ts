@@ -104,3 +104,42 @@ export const VET_COUNTRIES = [
 ] as const;
 
 export const VET_PRICE_OPTIONS = [30, 40, 50] as const;
+
+export interface VetBlockedDate {
+  id: string;
+  vet_id: string;
+  blocked_date: string; // YYYY-MM-DD
+  reason?: string | null;
+  created_at?: string;
+}
+
+export const CONSULTATION_DURATIONS = [15, 30, 45, 60] as const;
+export type ConsultationDuration = (typeof CONSULTATION_DURATIONS)[number];
+
+export const COMMON_TIMEZONES = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Rome',
+  'Asia/Dubai',
+  'Asia/Tokyo',
+  'Asia/Kolkata',
+  'Asia/Singapore',
+  'Australia/Sydney',
+  'Africa/Lagos',
+  'America/Sao_Paulo',
+] as const;
+
+export const WEEKDAYS = [
+  { index: 0, label: 'Sunday', short: 'Sun' },
+  { index: 1, label: 'Monday', short: 'Mon' },
+  { index: 2, label: 'Tuesday', short: 'Tue' },
+  { index: 3, label: 'Wednesday', short: 'Wed' },
+  { index: 4, label: 'Thursday', short: 'Thu' },
+  { index: 5, label: 'Friday', short: 'Fri' },
+  { index: 6, label: 'Saturday', short: 'Sat' },
+] as const;

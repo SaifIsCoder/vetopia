@@ -1,4 +1,6 @@
 import type { Session, User } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
+import * as Linking from 'expo-linking';
 import { supabase } from '../supabase/client';
 import { useAuthStore, UserProfile, UserRole } from '../../store/authStore';
 import { queryClient } from '../query/client';
@@ -241,7 +243,74 @@ class AuthService {
   }
 
   /**
+   * Initiates Google OAuth authentication flow (FR-AUTH-002, SRS NFR-SEC-001).
+   */
+  public async signInWithGoogleOAuth(role: 'pet_parent' | 'vet' = 'pet_parent'): Promise<{
+    url: string | null;
+  }> {
+    try {
+      const redirectUrl = Linking.createURL('auth/callback');
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+            role,
+          },
+        },
+      });
+
+      if (error) {
+        this.handleAuthError(error);
+      }
+
+      if (data?.url) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.location.href = data.url;
+        } else {
+          await Linking.openURL(data.url);
+        }
+      }
+
+      return { url: data?.url || null };
+    } catch (err) {
+      throw this.sanitizeError(err);
+    }
+  }
+
+  /**
+   * Pre-flight lockout check before attempting authentication (SRS NFR-SEC-001).
+   */
+  public async checkLockoutStatus(email: string): Promise<{
+    isLocked: boolean;
+    remainingSeconds?: number;
+    message?: string;
+  }> {
+    try {
+      const { data } = await supabase.rpc('check_login_lockout', {
+        p_email: email.trim().toLowerCase(),
+      });
+
+      if (data && data.locked) {
+        return {
+          isLocked: true,
+          remainingSeconds: data.remaining_seconds,
+          message: data.message,
+        };
+      }
+      return { isLocked: false };
+    } catch {
+      // In offline or degraded network environments, allow proceed to signIn
+      return { isLocked: false };
+    }
+  }
+
+  /**
    * Authenticate user with email and password.
+   * Enforces server-side lockout of 15 minutes after 5 consecutive failed attempts (SRS NFR-SEC-001).
    */
   public async login(params: LoginParams): Promise<{
     user: User;
@@ -257,18 +326,55 @@ class AuthService {
       throw new ValidationError('Password is required.');
     }
 
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    // 1. Enforce server-side lockout check (5 failed attempts for 15 minutes)
+    const lockoutStatus = await this.checkLockoutStatus(sanitizedEmail);
+    if (lockoutStatus.isLocked) {
+      throw new AuthError(
+        lockoutStatus.message ||
+          'Account is temporarily locked for 15 minutes due to 5 consecutive failed login attempts.',
+      );
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: sanitizedEmail,
         password,
       });
 
       if (error) {
+        // Record failed attempt server-side
+        try {
+          const { data: attemptResult } = await supabase.rpc('record_login_attempt', {
+            p_email: sanitizedEmail,
+            p_success: false,
+          });
+
+          if (attemptResult && attemptResult.locked) {
+            throw new AuthError(
+              'Account is now locked for 15 minutes due to 5 consecutive failed login attempts.',
+            );
+          }
+        } catch (attemptErr) {
+          if (attemptErr instanceof AuthError) throw attemptErr;
+        }
+
         this.handleAuthError(error);
       }
 
       if (!data.user || !data.session) {
         throw new AuthError('Login failed. Please verify your credentials.');
+      }
+
+      // Record successful login (clears failure count)
+      try {
+        await supabase.rpc('record_login_attempt', {
+          p_email: sanitizedEmail,
+          p_success: true,
+        });
+      } catch {
+        // Non-fatal
       }
 
       const profile = await this.loadUserProfile(data.user.id, data.user.email);
@@ -551,6 +657,31 @@ class AuthService {
     } catch (e) {
       console.warn('[AuthService] Supabase sign out warning:', e);
     } finally {
+      useAuthStore.getState().clearSession();
+      queryClient.clear();
+    }
+  }
+
+  /**
+   * Permanently deletes the authenticated user's account and personal data (Apple Guideline 5.1.1(v) & GDPR).
+   * Cascades deletion across device tokens, notifications, pets, vaccinations, and profile records.
+   * Clinical records (consultation notes and issued prescriptions) remain archived per veterinary compliance.
+   */
+  public async deleteAccount(): Promise<void> {
+    try {
+      const { error } = await supabase.rpc('delete_user_account');
+      if (error) {
+        throw new ApiError(`Failed to delete user account: ${error.message}`, 500);
+      }
+    } catch (err: any) {
+      console.error('[AuthService] Account deletion error:', err);
+      throw this.sanitizeError(err);
+    } finally {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Ignored
+      }
       useAuthStore.getState().clearSession();
       queryClient.clear();
     }

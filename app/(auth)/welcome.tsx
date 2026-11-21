@@ -37,7 +37,7 @@ export default function WelcomeScreen() {
   const [activeSlide, setActiveSlide] = useState(0);
 
   return (
-    <Screen style={styles.container}>
+    <Screen style={styles.container} testID="welcome-screen">
       <View style={styles.header}>
         <Text variant="caption" color={colors.inkSoft} style={styles.kicker}>
           THE PETS CLUB
@@ -78,12 +78,14 @@ export default function WelcomeScreen() {
           onPress={() => router.push('/(auth)/register')}
           variant="primary"
           style={styles.button}
+          testID="btn-get-started"
         />
         <Button
           title="I already have an account"
           onPress={() => router.push('/(auth)/login')}
           variant="outline"
           style={styles.button}
+          testID="btn-already-have-account"
         />
       </View>
     </Screen>

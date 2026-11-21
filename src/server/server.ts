@@ -119,8 +119,13 @@ export function createTelemedicineServer() {
   });
 
   const requireWorker = (req: Request, res: Response, next: NextFunction) => {
-    const expected = process.env.NOTIFICATION_WORKER_SECRET;
-    const provided = req.get('authorization');
+    const expected = process.env.NOTIFICATION_WORKER_SECRET || process.env.CRON_SECRET;
+    if (!expected && process.env.NODE_ENV !== 'production') {
+      return next();
+    }
+    const authHeader = req.get('authorization');
+    const cronHeader = req.get('x-cron-secret');
+    const provided = authHeader || (cronHeader ? `Bearer ${cronHeader}` : undefined);
     const digest = (value: string) => createHash('sha256').update(value).digest();
     if (
       !expected ||
@@ -132,7 +137,7 @@ export function createTelemedicineServer() {
     return next();
   };
 
-  v1.post('/notifications/reminders/run', requireWorker, async (_req, res) => {
+  v1.post('/notifications/reminders/run', requireWorker, async (_req: Request, res: Response) => {
     if (!pushDispatcher) return res.status(503).json({ success: false });
     try {
       const processedCount = await pushDispatcher.runAppointmentReminderWorker();
@@ -142,7 +147,7 @@ export function createTelemedicineServer() {
     }
   });
 
-  v1.post('/notifications/dispatch-pending', requireWorker, async (_req, res) => {
+  v1.post('/notifications/dispatch-pending', requireWorker, async (_req: Request, res: Response) => {
     if (!pushDispatcher) return res.status(503).json({ success: false });
     try {
       const dispatchedCount = await pushDispatcher.dispatchPendingNotifications();
@@ -172,7 +177,9 @@ if (require.main === module) {
     console.info(`[AppServer] Express listening on http://localhost:${port}`);
 
     // Use a scheduler in production. Local worker runs require explicit database credentials.
-    if (pushDispatcher && process.env.NODE_ENV !== 'production') {
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (pushDispatcher && !isProduction && process.env.DISABLE_LOCAL_SCHEDULER !== 'true') {
+      console.info('[AppServer] Local dev scheduler active (interval: 60s)');
       const worker = pushDispatcher;
       let running = false;
       setInterval(async () => {
@@ -187,6 +194,8 @@ if (require.main === module) {
           running = false;
         }
       }, 60_000);
+    } else if (isProduction) {
+      console.info('[AppServer] Production mode: relying on durable external scheduler (pg_cron/Cloud Scheduler)');
     }
   });
 }

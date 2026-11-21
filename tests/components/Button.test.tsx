@@ -33,4 +33,24 @@ describe('Button Component', () => {
     fireEvent.press(getByRole('button'));
     expect(onPressMock).not.toHaveBeenCalled();
   });
+
+  test('Guarantees minimum 44pt touch target on size sm (WCAG/Apple HIG/SRS)', () => {
+    const { getByRole } = render(<Button title="Small Action" size="sm" />);
+    const button = getByRole('button');
+    const flattenedStyle = Array.isArray(button.props.style)
+      ? button.props.style.reduce((acc: any, s: any) => ({ ...acc, ...s }), {})
+      : button.props.style;
+
+    expect(flattenedStyle.minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  test('Guarantees 48pt touch target on default size md', () => {
+    const { getByRole } = render(<Button title="Medium Action" size="md" />);
+    const button = getByRole('button');
+    const flattenedStyle = Array.isArray(button.props.style)
+      ? button.props.style.reduce((acc: any, s: any) => ({ ...acc, ...s }), {})
+      : button.props.style;
+
+    expect(flattenedStyle.minHeight).toBeGreaterThanOrEqual(48);
+  });
 });

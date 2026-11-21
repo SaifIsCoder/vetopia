@@ -109,7 +109,9 @@ export const ActiveCallView: React.FC<ActiveCallViewProps> = ({
             <RefreshCw size={18} color={colors.warning} style={styles.spinIcon} />
             <View style={styles.reconnectTextCol}>
               <Text variant="bodySm" color={colors.white} style={styles.bold}>
-                Connection unstable. Reconnecting... ({reconnectSeconds}s)
+                {reconnectSeconds < 20
+                  ? `Connection unstable. Reconnecting... (${Math.max(0, 20 - reconnectSeconds)}s remaining)`
+                  : 'Connection lost after 20s.'}
               </Text>
               {reconnectSeconds >= 20 ? (
                 <TouchableOpacity onPress={onRetryConnection} style={styles.retryActionBtn}>

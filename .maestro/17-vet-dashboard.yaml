@@ -1,0 +1,33 @@
+# ============================================================
+# E2E Test: Vet Dashboard (Doctor Role)
+# ============================================================
+# Covers: Vet login, dashboard redirect, vet-specific features
+
+appId: com.vetopia.app
+name: "Vet Dashboard - Doctor Flow"
+tags:
+  - vet
+  - dashboard
+
+---
+
+# Login as vet
+- runFlow: subflows/login-as-vet.yaml
+
+# ── Verify Vet Dashboard ───────────────────────────────────
+- assertVisible:
+    text: "Dashboard"
+
+# ── Scroll through dashboard sections ──────────────────────
+- scroll:
+    direction: DOWN
+    duration: 500
+
+# ── Logout ──────────────────────────────────────────────────
+# Vet dashboard has its own sign-out mechanism
+- scrollUntilVisible:
+    element:
+      text: "Sign Out"
+    direction: DOWN
+    timeout: 5000
+    optional: true

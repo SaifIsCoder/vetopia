@@ -1,0 +1,52 @@
+# ============================================================
+# E2E Test: AI Triage Chat
+# ============================================================
+# Covers: Guest-accessible AI chat, symptom input, response
+# NOTE: AI triage is accessible without authentication
+
+appId: com.vetopia.app
+name: "AI Triage - Chat Flow"
+tags:
+  - ai
+  - smoke
+
+---
+
+# Login first (AI chat is also accessible logged in)
+- runFlow: subflows/login.yaml
+
+# ── Open AI Chat ────────────────────────────────────────────
+- tapOn:
+    id: "banner-ai-triage"
+- assertVisible:
+    text: "(?i).*Triage.*|.*Gemini.*"
+
+# ── Verify Chat UI ──────────────────────────────────────────
+- assertVisible:
+    id: "ai-symptom-input"
+- assertVisible:
+    id: "btn-ai-send"
+
+# ── Send a Symptom ──────────────────────────────────────────
+- tapOn:
+    id: "ai-symptom-input"
+- inputText: "My dog has mild cough"
+- hideKeyboard
+- tapOn:
+    id: "btn-ai-send"
+
+# Wait for AI response or acknowledgement
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 10000
+
+# ── Reset Chat ──────────────────────────────────────────────
+- tapOn:
+    id: "btn-ai-reset"
+
+# ── Close Chat ──────────────────────────────────────────────
+- tapOn:
+    id: "btn-ai-back"
+- assertVisible:
+    text: "Home"

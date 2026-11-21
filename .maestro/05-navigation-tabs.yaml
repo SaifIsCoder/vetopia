@@ -1,0 +1,86 @@
+# ============================================================
+# E2E Test: Navigation — Tab Switching & Back Navigation
+# ============================================================
+# Covers: Bottom tab bar, stack navigation, protected routes
+
+appId: com.vetopia.app
+name: "Navigation - Tab & Stack Flow"
+tags:
+  - navigation
+  - smoke
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Tab Navigation ──────────────────────────────────────────
+
+# Home tab (should already be here)
+- assertVisible:
+    text: "Home"
+
+# Find Vet tab
+- tapOn:
+    text: "Find Vet"
+- assertVisible:
+    text: "(?i).*Search.*|.*Vet.*"
+
+# Appointments tab
+- tapOn:
+    text: "Appointments"
+- assertVisible:
+    text: "Appointments"
+
+# Messages tab
+- tapOn:
+    text: "Messages"
+- assertVisible:
+    text: "Messages"
+
+# Care tab
+- tapOn:
+    text: "Care"
+- assertVisible:
+    text: "(?i).*Care.*|.*Prescription.*"
+
+# Back to Home
+- tapOn:
+    text: "Home"
+- assertVisible:
+    text: "Home"
+
+# ── Stack Navigation (Deep Screen + Back) ───────────────────
+
+# Navigate to AI Chat (modal or banner)
+- tapOn:
+    text: "(?i).*24/7 AI.*|.*Symptom Triage.*"
+- assertVisible:
+    text: "(?i).*Triage.*|.*AI.*|.*Symptoms.*|.*Back.*"
+
+# Go back
+- back
+- assertVisible:
+    text: "Home"
+
+# ── Care Hub Deep Navigation ────────────────────────────────
+- tapOn:
+    text: "Care"
+
+# Prescriptions
+- tapOn:
+    id: "btn-care-prescriptions"
+- assertVisible:
+    text: "(?i).*Prescription.*"
+- back
+- assertVisible:
+    id: "btn-care-prescriptions"
+
+# Settings & Biometrics
+- tapOn:
+    id: "btn-care-settings"
+- assertVisible:
+    text: "(?i).*Settings.*|.*Profile.*"
+- back
+- assertVisible:
+    id: "btn-care-settings"

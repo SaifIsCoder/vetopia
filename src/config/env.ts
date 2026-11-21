@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * Centralized, validated environment configuration
  */
@@ -11,8 +13,6 @@ export interface EnvConfig {
   isDevelopment: boolean;
   isProduction: boolean;
 }
-
-import { Platform } from 'react-native';
 
 const appEnv = (process.env.EXPO_PUBLIC_APP_ENV || 'development') as
   'development' | 'staging' | 'production';

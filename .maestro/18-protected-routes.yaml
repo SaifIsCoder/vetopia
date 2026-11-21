@@ -1,0 +1,37 @@
+# ============================================================
+# E2E Test: Protected Route Redirects
+# ============================================================
+# Covers: Unauthenticated access redirect, role-based routing
+
+appId: com.vetopia.app
+name: "Navigation - Protected Routes"
+tags:
+  - navigation
+  - auth
+  - smoke
+
+---
+
+# ── Unauthenticated User → Welcome Screen ──────────────────
+# App should start on welcome when not authenticated
+- assertVisible:
+    text: "(?i).*ALREADY HAVE AN ACCOUNT.*|.*GET STARTED.*|.*Vetopia.*"
+
+# ── Verify Cannot Access Tabs ───────────────────────────────
+# Without login, tabs should not be visible
+- assertNotVisible:
+    text: "Appointments"
+
+# ── Login → Auto-redirect to Tabs ──────────────────────────
+- runFlow: subflows/login.yaml
+
+# Should be on Home tab
+- assertVisible:
+    text: "Home"
+
+# ── Logout → Redirect to Welcome ───────────────────────────
+- runFlow: subflows/logout.yaml
+
+# Should be back on welcome
+- assertVisible:
+    text: "(?i).*ALREADY HAVE AN ACCOUNT.*|.*GET STARTED.*|.*Vetopia.*"

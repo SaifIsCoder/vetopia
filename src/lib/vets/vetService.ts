@@ -2,6 +2,7 @@ import { supabase } from '../supabase/client';
 import {
   VetProfile,
   VetAvailability,
+  VetBlockedDate,
   VetFilterParams,
   DaySchedule,
   TimeSlot,
@@ -154,8 +155,9 @@ export function getDatePartsInTimezone(
 
 /**
  * Build bookable slots for the next `daysAhead` days from recurring weekly availability
- * minus existing booked appointments and past times, anchored in the veterinarian's timezone.
- * Pure function to facilitate isolated unit testing (FR-VET-002).
+ * minus existing booked appointments, past times, and doctor blocked dates,
+ * anchored in the veterinarian's timezone.
+ * Pure function to facilitate isolated unit testing (FR-VET-002 / Phase A).
  */
 export function buildSlots(
   availability: VetAvailability[],
@@ -164,8 +166,10 @@ export function buildSlots(
   daysAhead = 14,
   now: Date = new Date(),
   vetTimezone = 'UTC',
+  blockedDates: string[] = [],
 ): DaySchedule[] {
   const bookedTimestamps = new Set(bookedISO.map((iso) => new Date(iso).getTime()));
+  const blockedDateSet = new Set(blockedDates);
   const currentTimestamp = now.getTime();
   const bufferMs = 15 * 60 * 1000; // 15-minute advance buffer required by SRS
   const result: DaySchedule[] = [];
@@ -176,10 +180,17 @@ export function buildSlots(
     const dayDateInTz = new Date(Date.UTC(baseParts.year, baseParts.month, baseParts.day + i));
     const dayParts = getDatePartsInTimezone(dayDateInTz, vetTimezone);
 
+    const dateKey = `${dayParts.year}-${String(dayParts.month + 1).padStart(2, '0')}-${String(dayParts.day).padStart(2, '0')}`;
+
+    // Skip dates explicitly blocked or designated as time off by the veterinarian
+    if (blockedDateSet.has(dateKey)) {
+      continue;
+    }
+
     const matchingWindows = availability.filter((a) => a.weekday === dayParts.weekday);
     const daySlots: TimeSlot[] = [];
+    const seenStartTimes = new Set<number>();
 
-    const dateKey = `${dayParts.year}-${String(dayParts.month + 1).padStart(2, '0')}-${String(dayParts.day).padStart(2, '0')}`;
     const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const monthNames = [
       'Jan',
@@ -215,15 +226,24 @@ export function buildSlots(
           vetTimezone,
         );
 
+        const startMs = slotStart.getTime();
+
+        // Prevent duplicate slot times if availability windows overlap
+        if (seenStartTimes.has(startMs)) {
+          continue;
+        }
+
         // Omit slots in the past or within 15 minutes of present time
-        if (slotStart.getTime() < currentTimestamp + bufferMs) {
+        if (startMs < currentTimestamp + bufferMs) {
           continue;
         }
 
         // Omit slots that collide with already-scheduled appointments
-        if (bookedTimestamps.has(slotStart.getTime())) {
+        if (bookedTimestamps.has(startMs)) {
           continue;
         }
+
+        seenStartTimes.add(startMs);
 
         const hoursStr = String(Math.floor(m / 60)).padStart(2, '0');
         const minsStr = String(m % 60).padStart(2, '0');
@@ -400,13 +420,14 @@ export class VetService {
       }
 
       // 2. Client-side fallback if RPC has 0 slots or is not yet deployed
-      const [vetRes, availRes] = await Promise.all([
+      const [vetRes, availRes, blockedRes] = await Promise.all([
         supabase
           .from('vet_profiles')
           .select('slot_minutes, accepting, timezone, verified')
           .eq('id', vetId)
           .maybeSingle(),
         supabase.from('vet_availability').select('*').eq('vet_id', vetId).order('weekday'),
+        supabase.from('vet_blocked_dates').select('blocked_date').eq('vet_id', vetId),
       ]);
 
       if (vetRes.error) {
@@ -425,6 +446,7 @@ export class VetService {
       const slotMinutes = vetRes.data.slot_minutes || 30;
       const vetTimezone = vetRes.data.timezone || 'UTC';
       let availability = (availRes.data || []) as VetAvailability[];
+      const blockedDates = (blockedRes.data || []).map((b: any) => b.blocked_date);
 
       // Default practice hours across all 7 days (9:00 AM - 5:00 PM) if doctor has no custom windows
       if (availability.length === 0) {
@@ -437,7 +459,7 @@ export class VetService {
         }));
       }
 
-      return buildSlots(availability, slotMinutes, [], daysAhead, new Date(), vetTimezone);
+      return buildSlots(availability, slotMinutes, [], daysAhead, new Date(), vetTimezone, blockedDates);
     } catch (err: any) {
       if (err instanceof ApiError) throw err;
       throw new ApiError(err?.message || 'Failed to generate doctor schedule.', 500);
@@ -470,12 +492,43 @@ export class VetService {
   }
 
   /**
-   * Update the current authenticated veterinarian's practice settings (e.g. accepting status, price).
+   * Update the current authenticated veterinarian's practice settings (e.g. bio, fees, specialty, languages, timezone, slot duration).
    */
   public async updateMyVetProfile(updates: Partial<VetProfile>): Promise<VetProfile> {
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData?.user) {
       throw new AuthError('Authentication required.');
+    }
+
+    if (updates.price_usd !== undefined) {
+      if (typeof updates.price_usd !== 'number' || isNaN(updates.price_usd) || updates.price_usd <= 0) {
+        throw new ValidationError('Consultation fee must be a valid positive number.');
+      }
+    }
+
+    if (updates.slot_minutes !== undefined) {
+      const allowed = [15, 30, 45, 60];
+      if (!allowed.includes(updates.slot_minutes as any)) {
+        throw new ValidationError('Consultation duration must be 15, 30, 45, or 60 minutes.');
+      }
+    }
+
+    if (updates.specialty !== undefined) {
+      if (!updates.specialty || !updates.specialty.trim()) {
+        throw new ValidationError('Medical specialty is required.');
+      }
+    }
+
+    if (updates.languages !== undefined) {
+      if (!Array.isArray(updates.languages) || updates.languages.length === 0) {
+        throw new ValidationError('At least one spoken language is required.');
+      }
+    }
+
+    if (updates.timezone !== undefined) {
+      if (!updates.timezone || !updates.timezone.trim()) {
+        throw new ValidationError('Timezone is required.');
+      }
     }
 
     try {
@@ -491,8 +544,238 @@ export class VetService {
       }
       return data as VetProfile;
     } catch (err: any) {
-      if (err instanceof ApiError || err instanceof AuthError) throw err;
+      if (err instanceof ApiError || err instanceof AuthError || err instanceof ValidationError) {
+        throw err;
+      }
       throw new ApiError(err?.message || 'Failed to update practice settings.', 500);
+    }
+  }
+
+  /**
+   * Fetch recurring weekly availability windows for a veterinarian.
+   */
+  public async getMyAvailability(vetId: string): Promise<VetAvailability[]> {
+    if (!vetId) {
+      throw new ValidationError('Doctor ID is required.');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vet_availability')
+        .select('*')
+        .eq('vet_id', vetId)
+        .order('weekday', { ascending: true })
+        .order('start_minute', { ascending: true });
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+
+      return (data || []) as VetAvailability[];
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof ValidationError) throw err;
+      throw new ApiError(err?.message || 'Failed to fetch doctor availability windows.', 500);
+    }
+  }
+
+  /**
+   * Save recurring weekly availability windows for a veterinarian.
+   * Atomically validates windows and updates public.vet_availability.
+   */
+  public async updateMyAvailability(
+    vetId: string,
+    windows: { weekday: number; start_minute: number; end_minute: number }[],
+  ): Promise<VetAvailability[]> {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user) {
+      throw new AuthError('Authentication required.');
+    }
+    if (!vetId) {
+      throw new ValidationError('Doctor ID is required.');
+    }
+
+    // Validate each window
+    for (const w of windows) {
+      if (typeof w.weekday !== 'number' || w.weekday < 0 || w.weekday > 6) {
+        throw new ValidationError('Weekday must be an integer between 0 (Sun) and 6 (Sat).');
+      }
+      if (typeof w.start_minute !== 'number' || w.start_minute < 0 || w.start_minute > 1440) {
+        throw new ValidationError('Start time must be between 0 and 1440 minutes.');
+      }
+      if (typeof w.end_minute !== 'number' || w.end_minute < 0 || w.end_minute > 1440) {
+        throw new ValidationError('End time must be between 0 and 1440 minutes.');
+      }
+      if (w.start_minute >= w.end_minute) {
+        throw new ValidationError('End time must be greater than start time.');
+      }
+      if (w.end_minute - w.start_minute < 15) {
+        throw new ValidationError('Availability window must be at least 15 minutes.');
+      }
+    }
+
+    // Check for overlapping windows on the same weekday
+    const byDay: Record<number, { start_minute: number; end_minute: number }[]> = {};
+    for (const w of windows) {
+      if (!byDay[w.weekday]) byDay[w.weekday] = [];
+      byDay[w.weekday].push(w);
+    }
+
+    const dayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const day in byDay) {
+      const dayWindows = byDay[day].sort((a, b) => a.start_minute - b.start_minute);
+      for (let i = 0; i < dayWindows.length - 1; i++) {
+        if (dayWindows[i].end_minute > dayWindows[i + 1].start_minute) {
+          throw new ValidationError(
+            `Availability windows overlap on ${dayLabels[Number(day)]}.`,
+          );
+        }
+      }
+    }
+
+    try {
+      // Delete existing availability windows for this doctor
+      const { error: delError } = await supabase
+        .from('vet_availability')
+        .delete()
+        .eq('vet_id', vetId);
+
+      if (delError) {
+        throw new ApiError(delError.message, 500);
+      }
+
+      if (windows.length === 0) {
+        return [];
+      }
+
+      const rowsToInsert = windows.map((w) => ({
+        vet_id: vetId,
+        weekday: w.weekday,
+        start_minute: w.start_minute,
+        end_minute: w.end_minute,
+      }));
+
+      const { data, error: insError } = await supabase
+        .from('vet_availability')
+        .insert(rowsToInsert)
+        .select('*')
+        .order('weekday', { ascending: true })
+        .order('start_minute', { ascending: true });
+
+      if (insError) {
+        throw new ApiError(insError.message, 500);
+      }
+
+      return (data || []) as VetAvailability[];
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof AuthError || err instanceof ValidationError) {
+        throw err;
+      }
+      throw new ApiError(err?.message || 'Failed to update weekly availability.', 500);
+    }
+  }
+
+  /**
+   * Fetch blocked dates / unavailable days for a veterinarian.
+   */
+  public async getMyBlockedDates(vetId: string): Promise<VetBlockedDate[]> {
+    if (!vetId) {
+      throw new ValidationError('Doctor ID is required.');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vet_blocked_dates')
+        .select('*')
+        .eq('vet_id', vetId)
+        .order('blocked_date', { ascending: true });
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+
+      return (data || []) as VetBlockedDate[];
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof ValidationError) throw err;
+      throw new ApiError(err?.message || 'Failed to fetch doctor blocked dates.', 500);
+    }
+  }
+
+  /**
+   * Add a blocked date / time off for a veterinarian.
+   */
+  public async addBlockedDate(
+    vetId: string,
+    date: string,
+    reason?: string | null,
+  ): Promise<VetBlockedDate> {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user) {
+      throw new AuthError('Authentication required.');
+    }
+    if (!vetId) {
+      throw new ValidationError('Doctor ID is required.');
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new ValidationError('Valid blocked date in YYYY-MM-DD format is required.');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vet_blocked_dates')
+        .insert({
+          vet_id: vetId,
+          blocked_date: date,
+          reason: reason?.trim() || null,
+        })
+        .select('*')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          throw new ValidationError('Date is already blocked in your schedule.');
+        }
+        throw new ApiError(error.message, 500);
+      }
+
+      return data as VetBlockedDate;
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof AuthError || err instanceof ValidationError) {
+        throw err;
+      }
+      throw new ApiError(err?.message || 'Failed to add blocked date.', 500);
+    }
+  }
+
+  /**
+   * Remove a blocked date / time off for a veterinarian.
+   */
+  public async removeBlockedDate(vetId: string, date: string): Promise<void> {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user) {
+      throw new AuthError('Authentication required.');
+    }
+    if (!vetId) {
+      throw new ValidationError('Doctor ID is required.');
+    }
+    if (!date) {
+      throw new ValidationError('Date is required.');
+    }
+
+    try {
+      const { error } = await supabase
+        .from('vet_blocked_dates')
+        .delete()
+        .eq('vet_id', vetId)
+        .eq('blocked_date', date);
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+    } catch (err: any) {
+      if (err instanceof ApiError || err instanceof AuthError || err instanceof ValidationError) {
+        throw err;
+      }
+      throw new ApiError(err?.message || 'Failed to remove blocked date.', 500);
     }
   }
 }

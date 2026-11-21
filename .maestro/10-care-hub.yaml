@@ -1,0 +1,48 @@
+# ============================================================
+# E2E Test: Care Hub & Pet Management
+# ============================================================
+# Covers: Care tab quick links, prescriptions, community access
+
+appId: com.vetopia.app
+name: "Care Hub - Quick Actions"
+tags:
+  - care
+  - pets
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Care Tab ────────────────────────────────────
+- tapOn:
+    text: "Care"
+- assertVisible:
+    id: "btn-care-prescriptions"
+- assertVisible:
+    id: "btn-care-ai-triage"
+- assertVisible:
+    id: "btn-care-settings"
+
+# ── Prescriptions Archive ──────────────────────────────────
+- tapOn:
+    id: "btn-care-prescriptions"
+- assertVisible:
+    text: "(?i).*Prescription.*"
+- back
+
+# ── AI Triage from Care ────────────────────────────────────
+- tapOn:
+    id: "btn-care-ai-triage"
+- assertVisible:
+    text: "(?i).*Triage.*|.*Gemini.*"
+- tapOn:
+    id: "btn-ai-back"
+
+# ── Settings from Care ─────────────────────────────────────
+- tapOn:
+    id: "btn-care-settings"
+- assertVisible:
+    id: "profile-user-name"
+- tapOn:
+    id: "btn-settings-back"

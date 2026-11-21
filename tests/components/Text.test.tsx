@@ -15,4 +15,16 @@ describe('Text Component', () => {
       expect.arrayContaining([expect.objectContaining({ color: '#DC2626' })]),
     );
   });
+
+  test('Enforces dynamic type scaling limit of 1.3x by default (SRS accessibility)', () => {
+    const { getByText } = render(<Text>Accessible Typography</Text>);
+    const element = getByText('Accessible Typography');
+    expect(element.props.maxFontSizeMultiplier).toBe(1.3);
+  });
+
+  test('Allows overriding maxFontSizeMultiplier if explicitly provided', () => {
+    const { getByText } = render(<Text maxFontSizeMultiplier={1.5}>Custom Scale</Text>);
+    const element = getByText('Custom Scale');
+    expect(element.props.maxFontSizeMultiplier).toBe(1.5);
+  });
 });

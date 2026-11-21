@@ -39,7 +39,7 @@ export default function PrescriptionsArchiveScreen() {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={styles.screen} testID="prescriptions-archive-screen">
       {/* Navigation Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -47,6 +47,7 @@ export default function PrescriptionsArchiveScreen() {
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel="Go back"
+          testID="btn-prescriptions-back"
         >
           <ArrowLeft size={22} color={colors.ink} />
         </TouchableOpacity>
@@ -106,6 +107,7 @@ export default function PrescriptionsArchiveScreen() {
         </View>
       ) : (
         <FlatList
+          testID="prescriptions-flatlist"
           data={prescriptions}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (

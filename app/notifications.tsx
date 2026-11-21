@@ -54,7 +54,7 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']} testID="notifications-screen">
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -62,6 +62,7 @@ export default function NotificationsScreen() {
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel="Back"
+          testID="btn-notifications-back"
         >
           <ArrowLeft size={22} color={colors.ink} />
         </TouchableOpacity>
@@ -83,6 +84,7 @@ export default function NotificationsScreen() {
             style={styles.markAllButton}
             accessibilityRole="button"
             accessibilityLabel="Mark all as read"
+            testID="btn-mark-all-read"
             disabled={markAllReadMutation.isPending}
           >
             <CheckCheck size={18} color={colors.primaryDark} />
@@ -129,6 +131,7 @@ export default function NotificationsScreen() {
         </View>
       ) : (
         <FlatList
+          testID="notifications-flatlist"
           data={notifications}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (

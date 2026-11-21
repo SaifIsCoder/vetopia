@@ -1,0 +1,77 @@
+# ============================================================
+# E2E Test: Settings & Profile
+# ============================================================
+# Covers: Profile display, edit modal, notification toggles,
+#         password reset, delete account access
+
+appId: com.vetopia.app
+name: "Settings - Profile Management"
+tags:
+  - settings
+  - profile
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Settings ────────────────────────────────────
+- tapOn:
+    text: "Care"
+- tapOn:
+    id: "btn-care-settings"
+
+# ── Profile Display ────────────────────────────────────────
+- assertVisible:
+    id: "profile-user-name"
+- assertVisible:
+    id: "profile-user-email"
+
+# ── Edit Profile Modal ─────────────────────────────────────
+- tapOn:
+    id: "btn-open-edit-profile"
+- assertVisible:
+    id: "input-edit-name"
+- assertVisible:
+    id: "input-edit-phone"
+- assertVisible:
+    id: "btn-save-profile"
+- assertVisible:
+    id: "btn-cancel-edit"
+
+# Cancel edit
+- tapOn:
+    id: "btn-cancel-edit"
+
+# ── Notification Toggles ───────────────────────────────────
+- scrollUntilVisible:
+    element:
+      id: "toggle-notif-consultations"
+    direction: DOWN
+- assertVisible:
+    id: "toggle-notif-consultations"
+- assertVisible:
+    id: "toggle-notif-messages"
+- assertVisible:
+    id: "toggle-notif-prescriptions"
+
+# ── Password Reset ─────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      id: "btn-password-reset"
+    direction: DOWN
+- assertVisible:
+    id: "btn-password-reset"
+
+# ── Sign Out Button Visible ──────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "(?i).*SIGN OUT.*"
+    direction: DOWN
+- assertVisible:
+    text: "(?i).*SIGN OUT.*"
+
+# ── Return to Care Tab ─────────────────────────────────────
+- back
+- assertVisible:
+    id: "btn-care-settings"

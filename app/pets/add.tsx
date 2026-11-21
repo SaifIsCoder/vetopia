@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -9,8 +9,6 @@ import {
   Heart,
   FileText,
   AlertCircle,
-  Camera,
-  Upload,
   Image as ImageIcon,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
@@ -23,13 +21,10 @@ import { colors } from '../../src/theme/colors';
 import { spacing } from '../../src/theme/spacing';
 import { radii } from '../../src/theme/radii';
 import { useCreatePet } from '../../src/hooks/usePets';
-import { useAuthStore } from '../../src/store/authStore';
-import { petPhotoService } from '../../src/lib/storage/petPhotoService';
 import { SPECIES_OPTIONS, SEX_OPTIONS, PetSpecies, PetSex } from '../../src/types/pet';
 
 export default function AddPetScreen() {
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
   const createPetMutation = useCreatePet();
 
   const [name, setName] = useState('');
@@ -40,7 +35,6 @@ export default function AddPetScreen() {
   const [weightKg, setWeightKg] = useState('');
   const [color, setColor] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [bio, setBio] = useState('');
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -91,7 +85,7 @@ export default function AddPetScreen() {
   };
 
   return (
-    <Screen scrollable style={styles.container}>
+    <Screen scrollable style={styles.container} testID="add-pet-screen">
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -129,6 +123,7 @@ export default function AddPetScreen() {
         <Input
           label="Pet Name *"
           placeholder="e.g. Bella, Milo, Luna"
+          testID="input-pet-name"
           value={name}
           onChangeText={(val) => {
             setName(val);
@@ -169,6 +164,7 @@ export default function AddPetScreen() {
         <Input
           label="Breed"
           placeholder="e.g. Golden Retriever, Persian, Mixed"
+          testID="input-pet-breed"
           value={breed}
           onChangeText={setBreed}
           leftIcon={<Heart size={18} color={colors.inkSoft} />}
@@ -265,6 +261,7 @@ export default function AddPetScreen() {
           disabled={createPetMutation.isPending}
           size="lg"
           style={styles.saveButton}
+          testID="btn-register-pet"
         />
         <Button
           title="Cancel"
@@ -272,6 +269,7 @@ export default function AddPetScreen() {
           variant="outline"
           size="md"
           disabled={createPetMutation.isPending}
+          testID="btn-cancel-add-pet"
         />
       </View>
     </Screen>

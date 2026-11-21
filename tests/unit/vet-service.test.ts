@@ -17,6 +17,9 @@ jest.mock('../../src/lib/supabase/client', () => {
     supabase: {
       from: jest.fn(),
       rpc: jest.fn(),
+      auth: {
+        getUser: jest.fn(),
+      },
     },
   };
 });
@@ -636,9 +639,15 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
       };
 
       (supabase.from as jest.Mock).mockImplementation((table: string) => {
+        const mockBlockedQuery: any = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+        };
+
         if (table === 'vet_profiles') return mockVetQuery;
         if (table === 'vet_availability') return mockAvailQuery;
-        return { select: jest.fn().mockReturnThis() };
+        if (table === 'vet_blocked_dates') return mockBlockedQuery;
+        return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockResolvedValue({ data: [], error: null }) };
       });
 
       const result = await vetService.getVetSchedule('vet-fallback', 14);
@@ -671,14 +680,295 @@ describe('VetService & Slot Generator — Unit & Security Verification (MVP-03)'
         order: jest.fn().mockResolvedValue({ data: [], error: null }),
       };
 
+      const mockBlockedQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
       (supabase.from as jest.Mock).mockImplementation((table: string) => {
         if (table === 'vet_profiles') return mockVetQuery;
         if (table === 'vet_availability') return mockAvailQuery;
-        return { select: jest.fn().mockReturnThis() };
+        if (table === 'vet_blocked_dates') return mockBlockedQuery;
+        return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockResolvedValue({ data: [], error: null }) };
       });
 
       const result = await vetService.getVetSchedule('vet-unverified', 14);
       expect(result).toEqual([]);
     });
   });
+
+  describe('7. Phase A — Veterinarian Profile & Availability Management', () => {
+    describe('buildSlots with Blocked Dates & Custom Durations', () => {
+      test('buildSlots completely excludes days that match blockedDates', () => {
+        const availability: VetAvailability[] = [
+          { id: 'av-1', vet_id: 'vet-1', weekday: 3, start_minute: 540, end_minute: 660 }, // Wed
+        ];
+        // Wednesday Sep 23, 2026 at 06:00 UTC
+        const fixedNow = new Date(Date.UTC(2026, 8, 23, 6, 0, 0));
+
+        // Block out Sep 23
+        const schedule = buildSlots(availability, 30, [], 7, fixedNow, 'UTC', ['2026-09-23']);
+        const dates = schedule.map((s) => s.date);
+        expect(dates).not.toContain('2026-09-23');
+      });
+
+      test('buildSlots supports 15-minute consultation duration', () => {
+        const availability: VetAvailability[] = [
+          { id: 'av-1', vet_id: 'vet-1', weekday: 3, start_minute: 540, end_minute: 600 }, // 1 hour: 09:00 - 10:00
+        ];
+        const fixedNow = new Date(Date.UTC(2026, 8, 23, 6, 0, 0));
+        const schedule = buildSlots(availability, 15, [], 1, fixedNow, 'UTC');
+
+        expect(schedule.length).toBe(1);
+        expect(schedule[0].slots.length).toBe(4); // 09:00, 09:15, 09:30, 09:45
+        expect(schedule[0].slots[0].formattedTime).toBe('09:00');
+        expect(schedule[0].slots[1].formattedTime).toBe('09:15');
+        expect(schedule[0].slots[2].formattedTime).toBe('09:30');
+        expect(schedule[0].slots[3].formattedTime).toBe('09:45');
+      });
+
+      test('buildSlots supports 60-minute consultation duration', () => {
+        const availability: VetAvailability[] = [
+          { id: 'av-1', vet_id: 'vet-1', weekday: 3, start_minute: 540, end_minute: 720 }, // 3 hours: 09:00 - 12:00
+        ];
+        const fixedNow = new Date(Date.UTC(2026, 8, 23, 6, 0, 0));
+        const schedule = buildSlots(availability, 60, [], 1, fixedNow, 'UTC');
+
+        expect(schedule.length).toBe(1);
+        expect(schedule[0].slots.length).toBe(3); // 09:00, 10:00, 11:00
+        expect(schedule[0].slots[0].formattedTime).toBe('09:00');
+        expect(schedule[0].slots[1].formattedTime).toBe('10:00');
+        expect(schedule[0].slots[2].formattedTime).toBe('11:00');
+      });
+
+      test('buildSlots deduplicates overlapping availability windows on same weekday', () => {
+        // Two windows that overlap: 09:00-11:00 and 10:00-12:00
+        const availability: VetAvailability[] = [
+          { id: 'av-1', vet_id: 'vet-1', weekday: 3, start_minute: 540, end_minute: 660 },
+          { id: 'av-2', vet_id: 'vet-1', weekday: 3, start_minute: 600, end_minute: 720 },
+        ];
+        const fixedNow = new Date(Date.UTC(2026, 8, 23, 6, 0, 0));
+        const schedule = buildSlots(availability, 30, [], 1, fixedNow, 'UTC');
+
+        expect(schedule.length).toBe(1);
+        const times = schedule[0].slots.map((s) => s.formattedTime);
+        const uniqueTimes = Array.from(new Set(times));
+        expect(times.length).toBe(uniqueTimes.length); // No duplicates!
+      });
+    });
+
+    describe('Availability Windows Management (getMyAvailability / updateMyAvailability)', () => {
+      test('getMyAvailability returns sorted windows', async () => {
+        const mockWindows = [
+          { id: 'w-1', vet_id: 'vet-1', weekday: 1, start_minute: 540, end_minute: 1020 },
+        ];
+        const mockQuery: any = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          order: jest.fn().mockReturnThis(),
+        };
+        mockQuery.order.mockReturnValueOnce(mockQuery);
+        mockQuery.order.mockResolvedValueOnce({ data: mockWindows, error: null });
+
+        (supabase.from as jest.Mock).mockReturnValue(mockQuery);
+
+        const result = await vetService.getMyAvailability('vet-1');
+        expect(result).toEqual(mockWindows);
+        expect(supabase.from).toHaveBeenCalledWith('vet_availability');
+      });
+
+      test('updateMyAvailability validates weekday in 0..6', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(
+          vetService.updateMyAvailability('vet-1', [
+            { weekday: 7, start_minute: 540, end_minute: 1020 },
+          ]),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      test('updateMyAvailability validates start_minute < end_minute', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(
+          vetService.updateMyAvailability('vet-1', [
+            { weekday: 1, start_minute: 1020, end_minute: 540 },
+          ]),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      test('updateMyAvailability validates window duration at least 15 minutes', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(
+          vetService.updateMyAvailability('vet-1', [
+            { weekday: 1, start_minute: 540, end_minute: 550 },
+          ]),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      test('updateMyAvailability rejects overlapping windows on the same weekday', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(
+          vetService.updateMyAvailability('vet-1', [
+            { weekday: 1, start_minute: 540, end_minute: 660 }, // 09:00 - 11:00
+            { weekday: 1, start_minute: 630, end_minute: 750 }, // 10:30 - 12:30 (overlaps!)
+          ]),
+        ).rejects.toThrow('Availability windows overlap on Monday.');
+      });
+
+      test('updateMyAvailability successfully deletes and inserts windows', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        const newWindows = [
+          { weekday: 1, start_minute: 540, end_minute: 1020 },
+          { weekday: 2, start_minute: 540, end_minute: 1020 },
+        ];
+
+        const insertedRows = newWindows.map((w, idx) => ({ id: `w-${idx}`, vet_id: 'vet-1', ...w }));
+
+        const mockDelete = jest.fn().mockReturnValue({
+          eq: jest.fn().mockResolvedValue({ error: null }),
+        });
+
+        const mockInsertQuery: any = {
+          select: jest.fn().mockReturnThis(),
+          order: jest.fn().mockReturnThis(),
+        };
+        mockInsertQuery.order.mockReturnValueOnce(mockInsertQuery);
+        mockInsertQuery.order.mockResolvedValueOnce({ data: insertedRows, error: null });
+
+        const mockInsert = jest.fn().mockReturnValue(mockInsertQuery);
+
+        (supabase.from as jest.Mock).mockImplementation((table: string) => {
+          if (table === 'vet_availability') {
+            return {
+              delete: mockDelete,
+              insert: mockInsert,
+            };
+          }
+          return {};
+        });
+
+        const result = await vetService.updateMyAvailability('vet-1', newWindows);
+        expect(result).toEqual(insertedRows);
+      });
+    });
+
+    describe('Blocked Dates Management (getMyBlockedDates / addBlockedDate / removeBlockedDate)', () => {
+      test('getMyBlockedDates returns doctor blocked dates', async () => {
+        const mockBlocked = [
+          { id: 'b-1', vet_id: 'vet-1', blocked_date: '2026-11-20', reason: 'Holiday' },
+        ];
+
+        const mockQuery: any = {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          order: jest.fn().mockResolvedValue({ data: mockBlocked, error: null }),
+        };
+        (supabase.from as jest.Mock).mockReturnValue(mockQuery);
+
+        const result = await vetService.getMyBlockedDates('vet-1');
+        expect(result).toEqual(mockBlocked);
+      });
+
+      test('addBlockedDate validates YYYY-MM-DD date format', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(vetService.addBlockedDate('vet-1', 'invalid-date')).rejects.toThrow(
+          ValidationError,
+        );
+      });
+
+      test('addBlockedDate handles duplicate date conflict error', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        const mockInsert = jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+        });
+
+        (supabase.from as jest.Mock).mockReturnValue({ insert: mockInsert });
+
+        await expect(vetService.addBlockedDate('vet-1', '2026-11-20')).rejects.toThrow(
+          'Date is already blocked in your schedule.',
+        );
+      });
+
+      test('removeBlockedDate deletes date', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        const mockDelete = jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockResolvedValue({ error: null }),
+          }),
+        });
+
+        (supabase.from as jest.Mock).mockReturnValue({ delete: mockDelete });
+
+        await expect(vetService.removeBlockedDate('vet-1', '2026-11-20')).resolves.toBeUndefined();
+      });
+    });
+
+    describe('Profile & Settings Validation (updateMyVetProfile)', () => {
+      test('Validates positive consultation fee', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(vetService.updateMyVetProfile({ price_usd: -5 })).rejects.toThrow(
+          'Consultation fee must be a valid positive number.',
+        );
+      });
+
+      test('Validates consultation duration in [15, 30, 45, 60]', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(vetService.updateMyVetProfile({ slot_minutes: 25 as any })).rejects.toThrow(
+          'Consultation duration must be 15, 30, 45, or 60 minutes.',
+        );
+      });
+
+      test('Validates non-empty languages array', async () => {
+        (supabase.auth.getUser as jest.Mock).mockResolvedValueOnce({
+          data: { user: { id: 'u-vet' } },
+          error: null,
+        });
+
+        await expect(vetService.updateMyVetProfile({ languages: [] })).rejects.toThrow(
+          'At least one spoken language is required.',
+        );
+      });
+    });
+  });
 });
+

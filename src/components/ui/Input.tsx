@@ -45,6 +45,7 @@ export const Input: React.FC<InputProps> = ({
         {leftIcon ? <View style={styles.leftIconContainer}>{leftIcon}</View> : null}
 
         <TextInput
+          maxFontSizeMultiplier={rest.maxFontSizeMultiplier ?? 1.3}
           placeholderTextColor={colors.muted}
           style={[styles.input, style]}
           onFocus={(e) => {

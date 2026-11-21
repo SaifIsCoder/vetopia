@@ -25,6 +25,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  Trash2,
+  FileText,
 } from 'lucide-react-native';
 
 import { Screen } from '../../src/components/layout/Screen';
@@ -90,6 +92,10 @@ export default function ProfileSettingsScreen() {
     text: string;
     type: 'success' | 'error';
   } | null>(null);
+
+  // Account deletion and privacy compliance modal states
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
 
   // Load hardware biometrics and notification preferences on mount
   useEffect(() => {
@@ -205,6 +211,40 @@ export default function ProfileSettingsScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign Out', style: 'destructive', onPress: performSignOut },
       ]);
+    }
+  };
+
+  // Handle Account Deletion (Apple Guideline 5.1.1(v) & GDPR Compliance)
+  const handleDeleteAccount = () => {
+    const performDelete = async () => {
+      setIsDeletingAccount(true);
+      try {
+        await authService.deleteAccount();
+        router.replace('/(auth)/login');
+      } catch (err: any) {
+        setIsDeletingAccount(false);
+        setStatusMessage({
+          text: err?.message || 'Failed to delete account. Please try again or contact support.',
+          type: 'error',
+        });
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      performDelete();
+    } else {
+      Alert.alert(
+        'Delete Account Permanently',
+        'Are you sure you want to permanently delete your Vetopia account? This action cannot be undone. All your personal data, pets, and credentials will be removed. In compliance with veterinary medical board regulations, prior clinical consultation logs and issued prescriptions are safely retained for statutory audit purposes.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete Permanently',
+            style: 'destructive',
+            onPress: performDelete,
+          },
+        ],
+      );
     }
   };
 
@@ -496,6 +536,17 @@ export default function ProfileSettingsScreen() {
 
         <Divider style={styles.cardDivider} />
 
+        <Button
+          title="Privacy Policy & Veterinary Compliance"
+          variant="outline"
+          leftIcon={<FileText size={18} color={colors.ink} />}
+          onPress={() => setIsPrivacyModalOpen(true)}
+          style={styles.privacyButton}
+          testID="btn-privacy-terms"
+        />
+
+        <Divider style={styles.cardDivider} />
+
         <View style={styles.disclaimerContainer}>
           <Info size={18} color={colors.inkSoft} style={styles.disclaimerIcon} />
           <Text variant="caption" color={colors.inkSoft} style={styles.disclaimerText}>
@@ -506,15 +557,26 @@ export default function ProfileSettingsScreen() {
         </View>
       </Card>
 
-      {/* 6. Sign Out Button */}
+      {/* 6. Account Lifecycle: Sign Out & Permanent Account Deletion */}
       <View style={styles.signOutContainer}>
         <Button
           title="Sign Out"
-          variant="destructive"
+          variant="secondary"
           leftIcon={<LogOut size={20} color={colors.white} />}
           onPress={handleSignOut}
           style={styles.signOutButton}
           testID="btn-sign-out"
+        />
+
+        <Button
+          title={isDeletingAccount ? 'Deleting Account...' : 'Delete Account Permanently'}
+          variant="destructive"
+          leftIcon={<Trash2 size={20} color={colors.white} />}
+          onPress={handleDeleteAccount}
+          disabled={isDeletingAccount}
+          loading={isDeletingAccount}
+          style={styles.deleteAccountButton}
+          testID="btn-delete-account"
         />
       </View>
 
@@ -610,6 +672,67 @@ export default function ProfileSettingsScreen() {
               testID="btn-cancel-edit"
             />
           </View>
+        </ScrollView>
+      </Modal>
+
+      {/* Privacy Policy & Veterinary Compliance Modal */}
+      <Modal
+        visible={isPrivacyModalOpen}
+        onClose={() => setIsPrivacyModalOpen(false)}
+        title="Privacy & Veterinary Compliance"
+      >
+        <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.privacySection}>
+            <Heading level={4} style={styles.privacyHeading}>
+              Data Privacy & Security
+            </Heading>
+            <Text variant="bodySm" color={colors.inkSoft} style={styles.privacyText}>
+              Vetopia encrypts all personal and health information both in transit (TLS 1.3) and at
+              rest. Authentication tokens are protected by hardware-backed SecureStore with biometric
+              authentication gating.
+            </Text>
+          </View>
+
+          <View style={styles.privacySection}>
+            <Heading level={4} style={styles.privacyHeading}>
+              Veterinary Telemedicine Statutory Retention
+            </Heading>
+            <Text variant="bodySm" color={colors.inkSoft} style={styles.privacyText}>
+              In accordance with veterinary medical board regulations and clinical record laws, completed
+              telemedicine consultation records, doctor clinical notes, and digital prescriptions are
+              archived for statutory audit and safety compliance periods (minimum 3 to 5 years).
+            </Text>
+          </View>
+
+          <View style={styles.privacySection}>
+            <Heading level={4} style={styles.privacyHeading}>
+              Account Deletion & Right to be Forgotten
+            </Heading>
+            <Text variant="bodySm" color={colors.inkSoft} style={styles.privacyText}>
+              You have the right to permanently delete your account at any time. Tapping &apos;Delete Account
+              Permanently&apos; instantly wipes your credentials, notifications, device push tokens, and pet
+              profiles. Any retained clinical consultation records are permanently unlinked and anonymized.
+            </Text>
+          </View>
+
+          <View style={styles.privacySection}>
+            <Heading level={4} style={styles.privacyHeading}>
+              Emergency Medical Disclaimer
+            </Heading>
+            <Text variant="bodySm" color={colors.inkSoft} style={styles.privacyText}>
+              Vetopia provides veterinary telehealth triage. It does not replace emergency clinical
+              intervention. In life-threatening emergencies, immediately transport your pet to an
+              emergency veterinary hospital.
+            </Text>
+          </View>
+
+          <Button
+            title="Close"
+            variant="primary"
+            onPress={() => setIsPrivacyModalOpen(false)}
+            style={styles.modalSaveButton}
+            testID="btn-close-privacy"
+          />
         </ScrollView>
       </Modal>
     </Screen>
@@ -771,6 +894,22 @@ const styles = StyleSheet.create({
   disclaimerText: {
     flex: 1,
     lineHeight: 18,
+  },
+  privacyButton: {
+    minHeight: 44,
+  },
+  deleteAccountButton: {
+    marginTop: spacing.md,
+    minHeight: 48,
+  },
+  privacySection: {
+    marginBottom: spacing.lg,
+  },
+  privacyHeading: {
+    marginBottom: spacing.xs,
+  },
+  privacyText: {
+    lineHeight: 20,
   },
   signOutContainer: {
     marginBottom: spacing['2xl'],

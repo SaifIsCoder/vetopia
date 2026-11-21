@@ -32,6 +32,7 @@ jest.mock('expo-router', () => ({
 jest.mock('../../src/lib/auth/authService', () => ({
   authService: {
     signOut: jest.fn(),
+    deleteAccount: jest.fn(),
     requestPasswordReset: jest.fn(),
     loadUserProfile: jest.fn(),
   },
@@ -309,6 +310,45 @@ describe('ProfileSettingsScreen Component (MVP-10)', () => {
       });
 
       expect(authService.signOut).toHaveBeenCalledTimes(1);
+      alertSpy.mockRestore();
+    });
+
+    test('Opens Privacy Policy & Veterinary Compliance modal', async () => {
+      const { getByTestId, getByText } = render(<ProfileSettingsScreen />);
+      await waitFor(() => expect(getByTestId('profile-user-name')).toBeTruthy());
+
+      fireEvent.press(getByTestId('btn-privacy-terms'));
+
+      expect(getByText('Veterinary Telemedicine Statutory Retention')).toBeTruthy();
+      expect(getByText('Account Deletion & Right to be Forgotten')).toBeTruthy();
+
+      fireEvent.press(getByTestId('btn-close-privacy'));
+    });
+
+    test('Prompts confirmation alert on Delete Account and executes deleteAccount on confirm', async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert');
+      (authService.deleteAccount as jest.Mock).mockResolvedValueOnce(undefined);
+
+      const { getByTestId } = render(<ProfileSettingsScreen />);
+      await waitFor(() => expect(getByTestId('profile-user-name')).toBeTruthy());
+
+      fireEvent.press(getByTestId('btn-delete-account'));
+
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Delete Account Permanently',
+        expect.stringContaining('Are you sure you want to permanently delete your Vetopia account?'),
+        expect.any(Array),
+      );
+
+      const alertButtons = alertSpy.mock.calls[0][2];
+      const deleteConfirmBtn = alertButtons?.find((b) => b.text === 'Delete Permanently');
+      expect(deleteConfirmBtn).toBeDefined();
+
+      await act(async () => {
+        await deleteConfirmBtn?.onPress?.();
+      });
+
+      expect(authService.deleteAccount).toHaveBeenCalledTimes(1);
       alertSpy.mockRestore();
     });
   });

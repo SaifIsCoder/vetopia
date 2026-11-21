@@ -1,0 +1,91 @@
+# ============================================================
+# E2E Test: Auth Flow — Registration
+# ============================================================
+# Covers: FR-AUTH-001 Register, role selection, validation
+#
+# NOTE: This test creates a real account. In CI, use a throwaway
+#       email or disable Supabase email confirmation.
+
+appId: com.vetopia.app
+name: "Auth - Registration Flow"
+tags:
+  - auth
+  - critical
+
+---
+
+# Navigate to register
+- assertVisible:
+    text: "(?i)GET STARTED"
+- tapOn:
+    text: "(?i)GET STARTED"
+
+# ── Register Screen Render ──────────────────────────────────
+- assertVisible:
+    text: "Create Account"
+
+# ── Verify Role Selector ────────────────────────────────────
+- assertVisible:
+    text: "Pet Parent"
+- assertVisible:
+    text: "Veterinarian"
+
+# ── Edge Case: Empty form submission ────────────────────────
+- tapOn:
+    id: "btn-create-account"
+- assertVisible:
+    text: "(?i).*agree to the Terms.*"
+
+# ── Edge Case: Password mismatch ───────────────────────────
+- tapOn:
+    below: "Full Name"
+- inputText: "Test NewUser"
+- tapOn:
+    below: "Email Address"
+- inputText: "e2e-reg-test@vetopia.test"
+- tapOn:
+    below: "Password"
+- inputText: "NewPass789!"
+- tapOn:
+    below: "Confirm Password"
+- inputText: "WrongConfirm"
+- hideKeyboard
+- tapOn:
+    text: "(?i).*agree to the Terms.*"
+- tapOn:
+    text: "(?i)CREATE ACCOUNT"
+- assertVisible:
+    text: "Passwords do not match."
+
+# ── Edge Case: Missing terms agreement ──────────────────────
+- tapOn:
+    below: "Confirm Password"
+- eraseText: 50
+- inputText: "NewPass789!"
+- hideKeyboard
+# Uncheck terms (it's currently checked)
+- tapOn:
+    text: "(?i).*agree to the Terms.*"
+- tapOn:
+    text: "(?i)CREATE ACCOUNT"
+- assertVisible:
+    text: "(?i).*agree to the Terms.*"
+
+# ── Vet Role Selection ──────────────────────────────────────
+- tapOn:
+    text: "Veterinarian"
+# Should show specialty and fee fields
+- assertVisible:
+    text: "Primary Specialty"
+- assertVisible:
+    text: "Standard Consultation Fee"
+
+# Switch back to pet parent
+- tapOn:
+    text: "Pet Parent"
+
+# ── Navigate to login link ──────────────────────────────────
+- tapOn:
+    text: "(?i)Sign In"
+- assertVisible:
+    text: "Welcome Back"

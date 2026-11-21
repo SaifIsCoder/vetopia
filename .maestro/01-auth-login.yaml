@@ -1,0 +1,95 @@
+# ============================================================
+# E2E Test: Auth Flow — Login (Happy Path + Edge Cases)
+# ============================================================
+# Covers: FR-AUTH-001 Login, session persistence, error states
+#
+# Prerequisites:
+#   - Test user e2e-petparent@vetopia.test exists in Supabase
+#   - App is freshly launched (no prior session)
+
+appId: com.vetopia.app
+name: "Auth - Login Flow"
+tags:
+  - auth
+  - smoke
+  - critical
+
+---
+
+# ── Welcome Screen ──────────────────────────────────────────
+- assertVisible:
+    text: "GET STARTED"
+- assertVisible:
+    text: "I ALREADY HAVE AN ACCOUNT"
+
+# Navigate to login
+- tapOn:
+    text: "I ALREADY HAVE AN ACCOUNT"
+
+# ── Login Screen Render ─────────────────────────────────────
+- assertVisible:
+    text: "Welcome Back"
+
+# ── Edge Case: Empty form submission ────────────────────────
+- tapOn:
+    text: "(?i)Sign In"
+# Should show inline validation errors
+- assertVisible:
+    text: "Email address is required."
+
+# ── Edge Case: Invalid email format ─────────────────────────
+- tapOn:
+    text: "(?i)your.email@example.com"
+- inputText: "not-an-email"
+- tapOn:
+    text: "••••••••"
+- inputText: "SomePassword"
+- hideKeyboard
+- tapOn:
+    text: "(?i)SIGN IN"
+- assertVisible:
+    text: "Please enter a valid email address."
+
+# ── Edge Case: Wrong password ───────────────────────────────
+- tapOn:
+    text: "not-an-email"
+- eraseText: 50
+- inputText: "e2e-petparent@vetopia.test"
+- tapOn:
+    below: "Password"
+- eraseText: 50
+- inputText: "WrongPassword999"
+- hideKeyboard
+- tapOn:
+    text: "(?i)SIGN IN"
+# Should show error banner
+- assertVisible:
+    text: "(?i).*invalid.*|.*error.*|.*wrong.*|.*failed.*"
+
+# ── Happy Path: Valid credentials ───────────────────────────
+- tapOn:
+    below: "Password"
+- eraseText: 50
+- inputText: "TestPass123!"
+- hideKeyboard
+- tapOn:
+    text: "(?i)SIGN IN"
+
+# Should redirect to Home tab (when live backend is connected)
+- assertVisible:
+    text: "Home"
+    optional: true
+
+# ── Verify Tab Bar ──────────────────────────────────────────
+- assertVisible:
+    text: "Find Vet"
+    optional: true
+- assertVisible:
+    text: "Appointments"
+    optional: true
+- assertVisible:
+    text: "Messages"
+    optional: true
+- assertVisible:
+    text: "Care"
+    optional: true

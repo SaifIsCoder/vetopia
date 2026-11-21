@@ -130,10 +130,21 @@ const mockRefetchPast = jest.fn();
 const mockRefetchVet = jest.fn();
 const mockMutateUpdateVet = jest.fn();
 const mockCancelMutate = jest.fn();
+const mockRefetchAvailability = jest.fn();
+const mockRefetchBlockedDates = jest.fn();
+const mockUpdateAvailabilityMutate = jest.fn();
+const mockAddBlockedDateMutate = jest.fn();
+const mockRemoveBlockedDateMutate = jest.fn();
 
 let mockUpcomingData: Appointment[] = sampleUpcomingAppointments;
 let mockPastData: Appointment[] = samplePastAppointments;
 let mockVetData: VetProfile | null = sampleVetProfile;
+const mockAvailabilityData: any[] = [
+  { id: 'av-1', vet_id: 'vet-profile-1', weekday: 1, start_minute: 540, end_minute: 1020 },
+];
+const mockBlockedDatesData: any[] = [
+  { id: 'bd-1', vet_id: 'vet-profile-1', blocked_date: '2026-11-20', reason: 'Conference' },
+];
 
 jest.mock('../../src/hooks/useAppointments', () => ({
   useAppointments: (filter?: 'upcoming' | 'past') => ({
@@ -161,6 +172,34 @@ jest.mock('../../src/hooks/useVets', () => ({
   }),
   useUpdateMyVetProfile: () => ({
     mutateAsync: mockMutateUpdateVet,
+    isPending: false,
+  }),
+  useMyAvailability: () => ({
+    data: mockAvailabilityData,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: mockRefetchAvailability,
+    isRefetching: false,
+  }),
+  useUpdateMyAvailability: () => ({
+    mutateAsync: mockUpdateAvailabilityMutate,
+    isPending: false,
+  }),
+  useMyBlockedDates: () => ({
+    data: mockBlockedDatesData,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: mockRefetchBlockedDates,
+    isRefetching: false,
+  }),
+  useAddBlockedDate: () => ({
+    mutateAsync: mockAddBlockedDateMutate,
+    isPending: false,
+  }),
+  useRemoveBlockedDate: () => ({
+    mutateAsync: mockRemoveBlockedDateMutate,
     isPending: false,
   }),
 }));
@@ -319,6 +358,55 @@ describe('Doctor Consultation Portal (VetDashboardScreen)', () => {
 
       // Shows past appointment Bella
       expect(getByText('Bella (Dog)')).toBeTruthy();
+    });
+
+    test('Opens Profile & Fees modal and saves changes', async () => {
+      mockMutateUpdateVet.mockResolvedValueOnce({
+        ...sampleVetProfile,
+        price_usd: 55,
+      });
+
+      const { getByText, getByDisplayValue } = render(<VetDashboardScreen />);
+      const editBtn = getByText('Edit Profile & Fees');
+      fireEvent.press(editBtn);
+
+      expect(getByText('Practice Settings & Bio')).toBeTruthy();
+      expect(getByDisplayValue('45')).toBeTruthy();
+
+      const saveBtn = getByText('Save Changes');
+      fireEvent.press(saveBtn);
+
+      await waitFor(() => {
+        expect(mockMutateUpdateVet).toHaveBeenCalled();
+      });
+    });
+
+    test('Opens Working Hours modal and saves weekly availability', async () => {
+      mockUpdateAvailabilityMutate.mockResolvedValueOnce([]);
+
+      const { getByText } = render(<VetDashboardScreen />);
+      const hoursBtn = getByText('Working Hours');
+      fireEvent.press(hoursBtn);
+
+      expect(getByText('Weekly Working Hours')).toBeTruthy();
+      expect(getByText('Monday')).toBeTruthy();
+
+      const saveBtn = getByText('Save Working Hours');
+      fireEvent.press(saveBtn);
+
+      await waitFor(() => {
+        expect(mockUpdateAvailabilityMutate).toHaveBeenCalled();
+      });
+    });
+
+    test('Opens Blocked Dates modal and allows managing time off', async () => {
+      const { getByText } = render(<VetDashboardScreen />);
+      const blockedBtn = getByText('Blocked Dates');
+      fireEvent.press(blockedBtn);
+
+      expect(getByText('Time Off & Blocked Dates')).toBeTruthy();
+      expect(getByText('2026-11-20')).toBeTruthy();
+      expect(getByText('Conference')).toBeTruthy();
     });
   });
 

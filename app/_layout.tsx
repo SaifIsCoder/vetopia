@@ -49,8 +49,13 @@ function AuthGatekeeper({ children }: { children: React.ReactNode }) {
 
     async function bootstrapSession() {
       try {
-        const { data } = await supabase.auth.getSession();
-        const session = data.session;
+        // Enforce a 4-second timeout on initial network session check to prevent splash hang when offline/unreachable
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
+          setTimeout(() => resolve({ data: { session: null } }), 4000),
+        );
+        const { data } = await Promise.race([sessionPromise, timeoutPromise]);
+        const session = data?.session;
         let profile = null;
 
         if (session?.user) {
@@ -58,7 +63,7 @@ function AuthGatekeeper({ children }: { children: React.ReactNode }) {
         }
 
         if (isMounted) {
-          await initialize(session, profile);
+          await initialize(session || null, profile);
         }
       } catch (err) {
         console.warn('[AuthGatekeeper] Session bootstrap error:', err);
@@ -442,6 +447,97 @@ export default function RootLayout() {
             />
             <Stack.Screen
               name="vet/dashboard"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="clubs/index"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="clubs/[id]"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="clubs/[id]/create-post"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="clubs/post/[id]"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="community/index"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="community/feed"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="community/create-post"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="articles/index"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="articles/[id]"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="articles/create"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="events/index"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="events/[id]"
+              options={{
+                presentation: 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="events/create"
               options={{
                 presentation: 'card',
                 headerShown: false,

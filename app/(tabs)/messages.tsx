@@ -29,7 +29,7 @@ export default function MessagesScreen() {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={styles.screen} testID="messages-screen">
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
@@ -72,6 +72,7 @@ export default function MessagesScreen() {
       ) : conversations && conversations.length > 0 ? (
         /* Conversation list */
         <FlatList
+          testID="messages-flatlist"
           data={conversations}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (

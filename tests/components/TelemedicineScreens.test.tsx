@@ -348,9 +348,34 @@ describe('Telemedicine Components & Screen Tests (MVP-05)', () => {
       expect(getByText('You (Front)')).toBeTruthy();
     });
 
-    test('Displays reconnecting banner with 20s recovery indicator during network drops', () => {
+    test('Displays reconnecting banner with 20s countdown indicator during network drops', () => {
       const onRetry = jest.fn();
-      const { getByText } = render(
+      const { getByText, rerender } = render(
+        <ActiveCallView
+          appointment={sampleAppointment}
+          isVet={false}
+          participantName="Jane Doe"
+          remoteParticipantName="Dr. Sarah Mitchell"
+          isMicMuted={false}
+          isVideoMuted={false}
+          isFrontCamera={true}
+          isSpeakerOn={true}
+          isReconnecting={true}
+          reconnectSeconds={5}
+          onToggleMic={jest.fn()}
+          onToggleVideo={jest.fn()}
+          onFlipCamera={jest.fn()}
+          onToggleSpeaker={jest.fn()}
+          onEndCall={jest.fn()}
+          onRetryConnection={onRetry}
+        />,
+      );
+
+      // 5 seconds elapsed -> 15s remaining
+      expect(getByText('Connection unstable. Reconnecting... (15s remaining)')).toBeTruthy();
+
+      // Rerender at 20 seconds timeout
+      rerender(
         <ActiveCallView
           appointment={sampleAppointment}
           isVet={false}
@@ -371,7 +396,7 @@ describe('Telemedicine Components & Screen Tests (MVP-05)', () => {
         />,
       );
 
-      expect(getByText('Connection unstable. Reconnecting... (20s)')).toBeTruthy();
+      expect(getByText('Connection lost after 20s.')).toBeTruthy();
       const retryBtn = getByText('Connection lost. Tap to reconnect now.');
       expect(retryBtn).toBeTruthy();
       fireEvent.press(retryBtn);

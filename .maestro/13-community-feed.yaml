@@ -1,0 +1,31 @@
+# ============================================================
+# E2E Test: Community Feed
+# ============================================================
+# Covers: Community index, feed browsing, post creation
+
+appId: com.vetopia.app
+name: "Community - Feed & Posts"
+tags:
+  - community
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Community ───────────────────────────────────
+- tapOn:
+    text: "Care"
+- tapOn:
+    id: "btn-care-community-hub"
+- assertVisible:
+    text: "Community"
+
+# ── Browse Feed ─────────────────────────────────────────────
+# If there are posts, scroll through them
+- scroll:
+    direction: DOWN
+    duration: 500
+
+# ── Back ────────────────────────────────────────────────────
+- back

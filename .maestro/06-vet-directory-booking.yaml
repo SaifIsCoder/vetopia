@@ -1,0 +1,54 @@
+# ============================================================
+# E2E Test: Vet Directory & Booking
+# ============================================================
+# Covers: Vet search, filter, profile view, booking flow
+
+appId: com.vetopia.app
+name: "Vet Directory & Booking"
+tags:
+  - vet
+  - booking
+  - critical
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Vet Directory ───────────────────────────────
+- tapOn:
+    text: "Find Vet"
+- assertVisible:
+    id: "vet-search-input"
+
+# ── Search ──────────────────────────────────────────────────
+- tapOn:
+    id: "vet-search-input"
+- inputText: "Dr"
+- hideKeyboard
+
+# Wait for results
+- assertVisible:
+    text: "Dr"
+
+# ── Filter Sheet ────────────────────────────────────────────
+- tapOn:
+    id: "vet-filter-button"
+# Filter sheet should appear
+- assertVisible:
+    text: "Filters"
+# Close it
+- back
+
+# ── Vet Profile (Tap first result) ──────────────────────────
+# Tap on any visible vet card
+- tapOn:
+    text: "Book"
+    index: 0
+
+# Should open booking modal
+- assertVisible:
+    text: "Select a Date"
+
+# Go back
+- back

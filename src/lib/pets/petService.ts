@@ -1,6 +1,7 @@
 import { supabase } from '../supabase/client';
-import { Pet, CreatePetDTO, UpdatePetDTO } from '../../types/pet';
+import { Pet, CreatePetDTO, UpdatePetDTO, PetVaccination, CreateVaccinationDTO } from '../../types/pet';
 import { ApiError, AuthError, NotFoundError, ValidationError } from '../api/errors';
+import { petPassportCache } from './petPassportCache';
 
 export class PetService {
   /**
@@ -196,11 +197,122 @@ export class PetService {
       if (error) {
         throw new ApiError(error.message, 500);
       }
+
+      await petPassportCache.clearPassportCache(petId);
     } catch (err: any) {
       if (err instanceof ApiError) throw err;
       throw new ApiError(err?.message || 'Failed to delete pet.', 500);
     }
   }
+
+  /**
+   * Validate vaccination input fields (FR-PET-002)
+   */
+  public validateVaccinationInput(dto: CreateVaccinationDTO): void {
+    if (!dto.pet_id) {
+      throw new ValidationError('Pet ID is required.');
+    }
+    if (!dto.vaccine_name || !dto.vaccine_name.trim()) {
+      throw new ValidationError('Vaccine name is required.');
+    }
+    if (!dto.administered_at || !/^\d{4}-\d{2}-\d{2}$/.test(dto.administered_at)) {
+      throw new ValidationError('Administered date must be a valid date in YYYY-MM-DD format.');
+    }
+    if (dto.next_due_at) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dto.next_due_at)) {
+        throw new ValidationError('Next due date must be a valid date in YYYY-MM-DD format.');
+      }
+      if (new Date(dto.next_due_at) <= new Date(dto.administered_at)) {
+        throw new ValidationError('Next due date must be after the administered date.');
+      }
+    }
+  }
+
+  /**
+   * Fetch all vaccinations for a pet.
+   * RLS allows access to pet owners, consulting vets, and admins.
+   */
+  public async getVaccinationsByPetId(petId: string): Promise<PetVaccination[]> {
+    if (!petId) {
+      throw new ValidationError('Pet ID is required.');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('pet_vaccinations')
+        .select('*')
+        .eq('pet_id', petId)
+        .order('administered_at', { ascending: false });
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+
+      return (data || []) as PetVaccination[];
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(err?.message || 'Failed to fetch vaccination history.', 500);
+    }
+  }
+
+  /**
+   * Record a new vaccination for a pet.
+   * Authorized for pet owner or consulting veterinarian.
+   */
+  public async createVaccination(dto: CreateVaccinationDTO): Promise<PetVaccination> {
+    this.validateVaccinationInput(dto);
+
+    try {
+      const payload = {
+        pet_id: dto.pet_id,
+        vaccine_name: dto.vaccine_name.trim(),
+        administered_at: dto.administered_at,
+        next_due_at: dto.next_due_at || null,
+        batch_number: dto.batch_number?.trim() || null,
+        administered_by: dto.administered_by?.trim() || null,
+        notes: dto.notes?.trim() || null,
+      };
+
+      const { data, error } = await supabase
+        .from('pet_vaccinations')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+
+      return data as PetVaccination;
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(err?.message || 'Failed to record vaccination.', 500);
+    }
+  }
+
+  /**
+   * Delete a vaccination record.
+   */
+  public async deleteVaccination(vaccinationId: string): Promise<void> {
+    if (!vaccinationId) {
+      throw new ValidationError('Vaccination ID is required.');
+    }
+
+    try {
+      const { error } = await supabase
+        .from('pet_vaccinations')
+        .delete()
+        .eq('id', vaccinationId);
+
+      if (error) {
+        throw new ApiError(error.message, 500);
+      }
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(err?.message || 'Failed to delete vaccination record.', 500);
+    }
+  }
 }
 
 export const petService = new PetService();
+

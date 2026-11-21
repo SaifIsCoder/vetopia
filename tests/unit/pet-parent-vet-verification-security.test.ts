@@ -135,7 +135,10 @@ describe('Pet Parent Portal: Veterinarian Discovery, Search & Booking Security A
       (supabase.from as jest.Mock).mockImplementation((table: string) => {
         if (table === 'vet_profiles') return mockVetQuery;
         if (table === 'vet_availability') return mockAvailQuery;
-        return { select: jest.fn().mockReturnThis() };
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+        };
       });
 
       const schedule = await vetService.getVetSchedule('vet-unverified', 14);
@@ -166,7 +169,10 @@ describe('Pet Parent Portal: Veterinarian Discovery, Search & Booking Security A
       (supabase.from as jest.Mock).mockImplementation((table: string) => {
         if (table === 'vet_profiles') return mockVetQuery;
         if (table === 'vet_availability') return mockAvailQuery;
-        return { select: jest.fn().mockReturnThis() };
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+        };
       });
 
       const schedule = await vetService.getVetSchedule('vet-inactive', 14);

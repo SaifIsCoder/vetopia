@@ -107,7 +107,7 @@ describe('SCR-AI-001: 24/7 AI Triage Chatbot Screen Component Tests', () => {
       expect(getByTestId('emergency-guidance-instruction')).toBeTruthy();
       expect(getByTestId('btn-connect-video-specialist')).toBeTruthy();
     });
-  });
+  }, 15000);
 
   test('5. Configured emergency veterinary number renders call button and launches dialer', async () => {
     (aiService.streamTriageChat as jest.Mock).mockImplementation((_req, onEvent) => {

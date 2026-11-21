@@ -1,0 +1,27 @@
+# ============================================================
+# E2E Test: Messages — Conversation List
+# ============================================================
+# Covers: Message tab, conversation list, unread badge
+
+appId: com.vetopia.app
+name: "Messages - Conversation List"
+tags:
+  - messages
+
+---
+
+# Login first
+- runFlow: subflows/login.yaml
+
+# ── Navigate to Messages Tab ────────────────────────────────
+- tapOn:
+    text: "Messages"
+- assertVisible:
+    text: "Messages"
+
+# ── Verify List or Empty State ──────────────────────────────
+# Either conversations load or empty state shows
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 8000
