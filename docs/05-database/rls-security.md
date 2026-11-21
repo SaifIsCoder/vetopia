@@ -23,21 +23,8 @@ Mobile Client (Expo)         Backend API (Express.js)       Database Layer (Supa
 Every table containing personal or clinical information has RLS enabled. Policies strictly enforce role and owner boundaries.
 
 ### 2.1 Profiles (`public.profiles`)
-```sql
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Anyone can view public profile details (doctor names, parent usernames)
-CREATE POLICY "profiles_select_public" 
-  ON public.profiles FOR SELECT USING (true);
-
--- Users can only insert their own profile on signup
-CREATE POLICY "profiles_insert_own" 
-  ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
--- Users can only update their own profile
-CREATE POLICY "profiles_update_own" 
-  ON public.profiles FOR UPDATE USING (auth.uid() = id);
-```
+The private table is readable by the profile owner and authenticated administrators. Owners can insert and update their own profiles. Anonymous and authenticated directory readers use `public.profile_directory`, which exposes only `id`, `full_name`, and `avatar_url`. The view grants read access only. Cross-user messaging lookups use this projection.
 
 ### 2.2 Pets (`public.pets`)
 ```sql
@@ -71,137 +58,13 @@ CREATE POLICY "owner deletes own pets"
   USING (owner_id = auth.uid());
 ```
 
-### 2.3 Veterinarian Profiles & Hours (`public.vet_profiles`, `public.vet_availability`)
-```sql
-ALTER TABLE public.vet_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vet_availability ENABLE ROW LEVEL SECURITY;
+### 2.3 Veterinarian profiles, license requests, and hours
 
--- 1. Public can search and view all doctor profiles and bookable hours
-CREATE POLICY "vets are public" ON public.vet_profiles FOR SELECT USING (true);
-CREATE POLICY "vet_availability_select_all" ON public.vet_availability FOR SELECT USING (true);
-
--- 2. Vet applicants can only register with verified = false (unless admin)
-CREATE POLICY "vet creates own profile" ON public.vet_profiles
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    auth.uid() = user_id
-    AND (verified IS FALSE OR public.has_role(auth.uid(), 'admin'::public.app_role))
-  );
-
--- 3. Doctors can update their own clinical and practice details
-CREATE POLICY "vet updates own profile" 
-  ON public.vet_profiles FOR UPDATE TO authenticated USING (auth.uid() = user_id);
-
--- 4. Administrators can update any doctor profile (e.g. approve verification)
-CREATE POLICY "admins update vet profiles"
-  ON public.vet_profiles FOR UPDATE TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
-  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
-
--- 5. Availability window management
-CREATE POLICY "vet_availability_manage_own" 
-  ON public.vet_availability FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.vet_profiles v WHERE v.id = vet_id AND v.user_id = auth.uid())
-  );
-
--- 6. Trigger Guard: prevents non-admins from self-verifying or modifying verified status
-CREATE OR REPLACE FUNCTION public.enforce_vet_verification_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-BEGIN
-  IF TG_OP = 'INSERT' AND NEW.verified IS TRUE AND NOT (
-    public.has_role(auth.uid(), 'admin'::public.app_role) OR current_user = 'service_role'
-  ) THEN
-    RAISE EXCEPTION 'Unauthorized: Veterinarian profiles cannot be self-verified upon registration.';
-  END IF;
-
-  IF TG_OP = 'UPDATE' AND NEW.verified IS DISTINCT FROM OLD.verified AND NOT (
-    public.has_role(auth.uid(), 'admin'::public.app_role) OR current_user = 'service_role'
-  ) THEN
-    RAISE EXCEPTION 'Unauthorized: Only administrators can modify veterinarian verification status.';
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
--- 7. Secure Administrator Approval RPC
-CREATE OR REPLACE FUNCTION public.approve_vet(target_vet_id uuid, approve_status boolean default true)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  updated_row public.vet_profiles%rowtype;
-BEGIN
-  IF NOT (public.has_role(auth.uid(), 'admin'::public.app_role) OR current_user = 'service_role') THEN
-    RAISE EXCEPTION 'Unauthorized: Only administrators can approve or verify veterinarians.';
-  END IF;
-
-  UPDATE public.vet_profiles SET verified = approve_status WHERE id = target_vet_id RETURNING * INTO updated_row;
-  RETURN to_jsonb(updated_row);
-END;
-$$;
-
--- 8. Secure Server-Side Schedule RPC (FR-VET-002)
--- Evaluates recurring vet_availability minus all scheduled appointments across all users
--- in the veterinarian's authoritative timezone without leaking patient PII or confidential notes.
-CREATE OR REPLACE FUNCTION public.get_vet_schedule(target_vet_id uuid, days_ahead int default 14)
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
--- (See supabase/migrations/20260925120000_vet_schedule_rpc.sql for complete implementation)
-$$;
-GRANT EXECUTE ON FUNCTION public.get_vet_schedule(uuid, int) TO anon, authenticated, service_role;
-```
+The public vet directory and its schedule show approved vets. Vet owners and administrators can also read pending profiles. The dashboard submits credentials through `request_vet_license_review(p_license_number)`. Each credential is private to the applicant and administrators, and cannot be replaced while its review is pending. Direct client writes cannot change `verified`. A signed-in administrator must call `approve_vet(target_vet_id, approve_status)` after checking a trusted licensing registry. This records the reviewer and decision and prevents self-approval.
 
 ### 2.4 Appointments (`public.appointments`)
-```sql
-ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 
--- Helper SQL Function: check if user is a valid appointment participant
-CREATE OR REPLACE FUNCTION public.is_appointment_participant(_appointment_id uuid, _user_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.appointments a
-    LEFT JOIN public.vet_profiles v ON v.id = a.vet_id
-    WHERE a.id = _appointment_id
-      AND (a.pet_parent_id = _user_id OR v.user_id = _user_id)
-  );
-$$;
-
--- Only direct participants can view the appointment details
-CREATE POLICY "appointments_select_participants" 
-  ON public.appointments FOR SELECT USING (
-    public.is_appointment_participant(id, auth.uid()) OR public.has_role(auth.uid(), 'admin')
-  );
-
--- Pet parent can book appointment for themselves
-CREATE POLICY "appointments_insert_parent" 
-  ON public.appointments FOR INSERT WITH CHECK (pet_parent_id = auth.uid());
-
--- Participants can update appointment (cancel, complete, update clinical notes)
-CREATE POLICY "appointments_update_participants" 
-  ON public.appointments FOR UPDATE USING (
-    public.is_appointment_participant(id, auth.uid())
-  );
-```
-
-#### Atomic Server-Side RPC Functions (Phase 5 / MVP-04)
-To eliminate client-side race conditions and guarantee that pet parents only book their own pets:
-1. `public.book_appointment(...)`:
-   - `SECURITY DEFINER` with immutable `SET search_path = public, auth`.
-   - Enforces `auth.uid() IS NOT NULL` (rejects anonymous booking).
-   - Enforces pet ownership: `SELECT id FROM public.pets WHERE id = p_pet_id AND owner_id = auth.uid()`.
-   - Validates veterinarian status (`accepting = true`) and 15-minute advance buffer.
-   - Relies on unique partial index `appointments_vet_scheduled_slot_idx` to guarantee atomic conflict handling (raises error code `23505`).
-2. `public.cancel_appointment(...)`:
-   - `SECURITY DEFINER` with immutable `SET search_path = public, auth`.
-   - Verifies caller is a participant (`pet_parent_id = auth.uid()` or assigned doctor).
-   - Sets status to `'cancelled'`, freeing the partial index slot for re-booking.
-   - Detects late cancellation (< 2 hours).
-3. `public.complete_appointment(...)` (Phase 6 / MVP-05):
-   - `SECURITY DEFINER` with immutable `SET search_path = public`.
-   - Enforces `auth.uid() IS NOT NULL` (Error: `28000`).
-   - Verifies appointment exists (Error: `P0002`).
-   - Verifies appointment status is currently `'scheduled'` (Error: `P0001`).
-   - Verifies caller is strictly the assigned veterinarian: `v_vet.user_id = auth.uid()` (Error: `42501`). Pet parents cannot mark appointments as completed.
-   - Atomically updates appointment status to `'completed'` and `updated_at = now()`.
-   - Disallows re-completion of already completed or cancelled consultations.
+Participants retain read access. Client roles cannot directly insert, update, or delete appointments. Use `book_appointment`, `cancel_appointment`, and `complete_appointment`. Booking requires ownership of the selected pet and an approved, accepting vet. Booking and discovery share the same published local slot grid. Slots must start at least 15 minutes ahead and fall within the vet's 30-day calendar. Duration and price come from the vet profile. A GiST exclusion constraint prevents conflicting scheduled intervals for the same vet, including simultaneous requests with different start times. Cancellation and completion lock the appointment before changing its status. Only the assigned approved vet can complete it.
 
 ### 2.5 Telemedicine Media & Signaling Infrastructure (LiveKit Cloud Managed SFU)
 
@@ -433,3 +296,11 @@ To prevent cross-user token tampering, ensure server-authoritative recipient det
 1. **Client Token Isolation:** Mobile app stores JWT tokens in hardware-backed secure enclaves (`expo-secure-store`). Standard file system or `AsyncStorage` usage is forbidden.
 2. **Backend Authentication Verification:** Express API verifies RS256 / HS256 signature on every inbound request and injects `req.user = { id, role }` into execution context.
 3. **Database Security Invariant:** Even if a malicious actor accesses the Supabase REST/WebSocket API directly with a stolen anon key, Row Level Security policies prevent unauthorized access to other users' appointments, pets, or prescriptions.
+
+## Phase 1 rollout and validation
+
+- Apply the ordered migrations in an isolated staging database first. The compatibility bridge `20260926190000_prepare_notification_message_rpc.sql` precedes the historical notification migration and only drops the legacy JSONB version of the message RPC. When deploying to a database that has already recorded the later version, verify the complete migration history and use Supabase's include-all migration option for the out-of-order bridge. The historical migration files remain the deployment history and `complete_schema.sql` is an ordered snapshot for inspection or clean installs.
+- Check existing scheduled visits for invalid or overlapping intervals before migration. Resolve conflicts explicitly with the practice and affected owners. The migration rejects conflicting data and does not cancel or change appointments.
+- All legacy approval flags are cleared because the old schema cannot distinguish independent checks from self-verification. Coordinate reapproval before reopening booking. Provision the first reviewer through trusted database administration by assigning the `admin` role to a known Auth user in `user_roles`. Using that administrator's authenticated session, read pending rows in `vet_license_requests`, validate credentials against the relevant authority, and call `approve_vet` with the decision. Advise approved vets to refresh the dashboard. Publish confirmed recurring hours in `vet_availability` for vets who have no existing hours.
+- Configure `EXPO_PUBLIC_SUPABASE_URL` with the relevant Supabase project and set `SUPABASE_SERVICE_ROLE_KEY` only in the Express backend. Set a random `NOTIFICATION_WORKER_SECRET` in the backend and trusted scheduler. In production, configure the scheduler to POST to `/api/v1/notifications/reminders/run` and then `/api/v1/notifications/dispatch-pending` with the worker secret as a bearer token. The reminder endpoint returns only a count. The worker leases dispatch rows and retries failures after the lease expires. Expo delivery is at least once and a partially successful batch may retry accepted tokens.
+- Run `bash tests/database/run-phase1.sh` with Docker. It applies the migration chain on network-isolated PostgreSQL, exercises the Supabase roles and SQL contracts with test fixtures, and races two real booking transactions.

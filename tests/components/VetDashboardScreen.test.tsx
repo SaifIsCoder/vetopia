@@ -46,7 +46,7 @@ jest.mock('../../src/store/authStore', () => ({
 jest.mock('../../src/lib/auth/authService', () => ({
   authService: {
     signOut: jest.fn().mockResolvedValue(undefined),
-    verifyLicense: jest.fn().mockResolvedValue({ success: true, verified: true }),
+    requestLicenseReview: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -202,7 +202,7 @@ describe('Doctor Consultation Portal (VetDashboardScreen)', () => {
   });
 
   describe('1. Unverified / Pending Doctor Experience', () => {
-    test('Renders pending verification badge and instant license verification form', () => {
+    test('Renders pending verification badge and license submission form', () => {
       const { getByText, getByPlaceholderText } = render(<VetDashboardScreen />);
 
       expect(getByText('DOCTOR PORTAL')).toBeTruthy();
@@ -210,32 +210,32 @@ describe('Doctor Consultation Portal (VetDashboardScreen)', () => {
       expect(getByText('Pending Approval')).toBeTruthy();
       expect(getByText('Medical License Verification Required')).toBeTruthy();
       expect(getByPlaceholderText('e.g. VET-84920')).toBeTruthy();
-      expect(getByText('Verify License Instantly')).toBeTruthy();
+      expect(getByText('Submit for Review')).toBeTruthy();
     });
 
     test('Validates empty license number submission', async () => {
       const { getByText } = render(<VetDashboardScreen />);
-      const verifyBtn = getByText('Verify License Instantly');
+      const verifyBtn = getByText('Submit for Review');
 
       fireEvent.press(verifyBtn);
 
       await waitFor(() => {
-        expect(authService.verifyLicense).not.toHaveBeenCalled();
+        expect(authService.requestLicenseReview).not.toHaveBeenCalled();
       });
     });
 
-    test('Submits license number and calls verifyLicense', async () => {
+    test('Submits license number and calls requestLicenseReview', async () => {
       const { getByText, getByPlaceholderText } = render(<VetDashboardScreen />);
       const input = getByPlaceholderText('e.g. VET-84920');
 
       fireEvent.changeText(input, 'VET-99412');
-      fireEvent.press(getByText('Verify License Instantly'));
+      fireEvent.press(getByText('Submit for Review'));
 
       await waitFor(() => {
-        expect(authService.verifyLicense).toHaveBeenCalledWith('VET-99412');
+        expect(authService.requestLicenseReview).toHaveBeenCalledWith('VET-99412');
         expect(mockAlert).toHaveBeenCalledWith(
-          'License Verified',
-          expect.stringContaining('verified'),
+          'License Submitted',
+          expect.stringContaining('administrator will review'),
         );
       });
     });

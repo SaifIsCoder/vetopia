@@ -4,8 +4,7 @@
  * multi-device delivery, and the 15-minute consultation reminder worker.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { defaultSupabase } from './telemedicineTokenHandler';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export interface PushNotificationPayload {
   title: string;
@@ -38,7 +37,7 @@ export class PushNotificationDispatcher {
   private supabase: SupabaseClient;
   private expoPushEndpoint = 'https://exp.host/--/api/v2/push/send';
 
-  constructor(supabaseClient: SupabaseClient = defaultSupabase) {
+  constructor(supabaseClient: SupabaseClient) {
     this.supabase = supabaseClient;
   }
 
@@ -48,7 +47,7 @@ export class PushNotificationDispatcher {
   async dispatchPushToUser(
     userId: string,
     payload: PushNotificationPayload,
-  ): Promise<{ sentCount: number; failedTokens: string[] }> {
+  ): Promise<{ sentCount: number; failedTokens: string[]; retry: boolean }> {
     try {
       // 1. Fetch active device tokens for the recipient user
       const { data: tokens, error } = await this.supabase
@@ -57,8 +56,9 @@ export class PushNotificationDispatcher {
         .eq('user_id', userId)
         .eq('is_active', true);
 
-      if (error || !tokens || tokens.length === 0) {
-        return { sentCount: 0, failedTokens: [] };
+      if (error) throw error;
+      if (!tokens?.length) {
+        return { sentCount: 0, failedTokens: [], retry: false };
       }
 
       const channelId =
@@ -83,37 +83,39 @@ export class PushNotificationDispatcher {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(messages),
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {
         console.warn(`[PushDispatcher] Expo Push Gateway responded with ${response.status}`);
-        return { sentCount: 0, failedTokens: [] };
+        return { sentCount: 0, failedTokens: [], retry: true };
       }
 
       const result = await response.json();
       const tickets: ExpoPushTicket[] = result.data || [];
       const failedTokens: string[] = [];
+      let sentCount = 0;
+      let retry = false;
 
-      // 3. Inspect tickets and deactivate invalid/expired tokens (e.g. DeviceNotRegistered)
-      for (let i = 0; i < tickets.length; i++) {
-        const ticket = tickets[i];
-        const token = tokens[i]?.token;
+      for (const [index, { token }] of tokens.entries()) {
+        const ticket = tickets[index];
+        if (ticket?.status === 'ok') {
+          sentCount++;
+          continue;
+        }
 
-        if (ticket.status === 'error' && token) {
-          failedTokens.push(token);
-          if (ticket.details?.error === 'DeviceNotRegistered') {
-            await this.deactivateInvalidToken(token);
-          }
+        failedTokens.push(token);
+        if (ticket?.details?.error === 'DeviceNotRegistered') {
+          await this.deactivateInvalidToken(token);
+        } else {
+          retry = true;
         }
       }
 
-      return {
-        sentCount: messages.length - failedTokens.length,
-        failedTokens,
-      };
+      return { sentCount, failedTokens, retry };
     } catch (err) {
       console.warn('[PushDispatcher] Push dispatch error:', err);
-      return { sentCount: 0, failedTokens: [] };
+      return { sentCount: 0, failedTokens: [], retry: true };
     }
   }
 
@@ -131,92 +133,58 @@ export class PushNotificationDispatcher {
     }
   }
 
-  /**
-   * 15-Minute Consultation Reminder Worker
-   * Idempotently scans for upcoming scheduled appointments and dispatches notifications
-   */
+  /** Enqueue reminders once. Push delivery uses the same outbox as other notifications. */
   async runAppointmentReminderWorker(): Promise<number> {
-    try {
-      // 1. Invoke atomic PostgreSQL RPC to claim reminders and insert notification rows
-      const { data, error } = await this.supabase.rpc('process_appointment_reminders');
-
-      if (error || !data || !Array.isArray(data) || data.length === 0) {
-        return 0;
-      }
-
-      // 2. Dispatch push notifications for each generated reminder
-      for (const row of data) {
-        await this.dispatchPushToUser(row.recipient_user_id, {
-          title: row.notification_title,
-          body: row.notification_body,
-          data: row.notification_data,
-          priority: 'high',
-          channelId: 'consultations',
-        });
-
-        if (row.notification_id) {
-          await this.supabase
-            .from('notifications')
-            .update({ pushed_at: new Date().toISOString() })
-            .eq('id', row.notification_id);
-        }
-      }
-
-      return data.length;
-    } catch (err) {
-      console.warn('[PushDispatcher] Reminder worker execution error:', err);
-      return 0;
-    }
+    const { data, error } = await this.supabase.rpc('process_appointment_reminders');
+    if (error) throw error;
+    return data;
   }
 
-  /**
-   * Transactional Outbox Dispatcher
-   * Claims and dispatches pending in-app notifications to the Expo Push Gateway.
-   * Guarantees at-least-once delivery for domain triggers (Appt booked, Message sent, Prescription issued).
-   */
-  async dispatchPendingNotifications(limit: number = 50): Promise<number> {
-    try {
-      const { data: pending, error } = await this.supabase
+  async dispatchPendingNotifications(limit = 20): Promise<number> {
+    const { data: pending, error } = await this.supabase.rpc('claim_pending_push_notifications', {
+      p_limit: Math.min(limit, 20),
+    });
+    if (error) throw error;
+
+    let processed = 0;
+    for (const notification of pending) {
+      const highPriority =
+        notification.type === 'doctor_entered_consultation' ||
+        notification.type === 'appointment_reminder';
+      const result = await this.dispatchPushToUser(notification.user_id, {
+        title: notification.title,
+        body: notification.body,
+        data: notification.data,
+        priority: highPriority ? 'high' : 'default',
+        channelId: highPriority ? 'consultations' : 'messages_general',
+      });
+      if (result.retry) continue;
+
+      const { data: completed, error: updateError } = await this.supabase
         .from('notifications')
-        .select('id, user_id, type, title, body, data')
-        .is('pushed_at', null)
-        .order('created_at', { ascending: true })
-        .limit(limit);
-
-      if (error || !pending || pending.length === 0) {
-        return 0;
-      }
-
-      let dispatchedCount = 0;
-      for (const notif of pending) {
-        const priority =
-          notif.type === 'doctor_entered_consultation' || notif.type === 'appointment_reminder'
-            ? 'high'
-            : 'default';
-        const channelId = priority === 'high' ? 'consultations' : 'messages_general';
-
-        await this.dispatchPushToUser(notif.user_id, {
-          title: notif.title,
-          body: notif.body,
-          data: notif.data,
-          priority,
-          channelId,
-        });
-
-        await this.supabase
-          .from('notifications')
-          .update({ pushed_at: new Date().toISOString() })
-          .eq('id', notif.id);
-
-        dispatchedCount++;
-      }
-
-      return dispatchedCount;
-    } catch (err) {
-      console.warn('[PushDispatcher] dispatchPendingNotifications error:', err);
-      return 0;
+        .update({
+          pushed_at: new Date().toISOString(),
+          push_claim_id: null,
+          push_claim_until: null,
+        })
+        .eq('id', notification.id)
+        .eq('push_claim_id', notification.push_claim_id)
+        .select('id')
+        .maybeSingle();
+      if (updateError) throw updateError;
+      if (completed) processed++;
     }
+    return processed;
   }
 }
 
-export const pushDispatcher = new PushNotificationDispatcher();
+const workerUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const workerKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export const pushDispatcher =
+  workerUrl && workerKey
+    ? new PushNotificationDispatcher(
+        createClient(workerUrl, workerKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        }),
+      )
+    : null;

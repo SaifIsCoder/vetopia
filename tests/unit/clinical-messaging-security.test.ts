@@ -470,7 +470,7 @@ describe('Clinical Messaging Security & Boundary Tests (MVP-07 / Phase 8)', () =
           }),
         };
       }
-      if (table === 'profiles' || table === 'vet_profiles' || table === 'direct_messages') {
+      if (table === 'profile_directory' || table === 'vet_profiles' || table === 'direct_messages') {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),

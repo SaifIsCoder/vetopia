@@ -334,7 +334,7 @@ class AuthService {
         metaRole === 'vet' ||
         metaRole === 'veterinarian';
 
-      let isVet = isDoctorDesignated;
+      const isVet = isDoctorDesignated;
       let isVetVerified = vetRes.data?.verified === true;
       let roles: UserRole[] = roleRows.map((r) => r.role);
 
@@ -449,93 +449,20 @@ class AuthService {
     }
   }
 
-  /**
-   * Instantly verifies the authenticated doctor's medical license number.
-   * Updates Supabase and syncs local authStore immediately.
-   */
-  public async verifyLicense(licenseNumber: string): Promise<boolean> {
-    const trimmed = licenseNumber?.trim();
-    if (!trimmed || trimmed.length < 3) {
-      throw new ValidationError('Medical license number must be at least 3 characters.');
+  /** Submit a private license number for administrator review. */
+  public async requestLicenseReview(licenseNumber: string): Promise<void> {
+    const number = licenseNumber.trim();
+    if (number.length < 3 || number.length > 100) {
+      throw new ValidationError('Medical license number must be between 3 and 100 characters.');
     }
 
     try {
-      console.info(
-        '🩺 [AuthService] Submitting medical license for instant verification:',
-        trimmed,
-      );
-      const { error } = await supabase.rpc('verify_doctor_license', {
-        license_number: trimmed,
+      const { error } = await supabase.rpc('request_vet_license_review', {
+        p_license_number: number,
       });
-
-      if (error) {
-        console.warn(
-          '⚠️ [AuthService] RPC verify_doctor_license returned error, trying fallback:',
-          error,
-        );
-        const currentUserId = useAuthStore.getState().user?.id;
-        if (currentUserId) {
-          const { error: updateError } = await supabase
-            .from('vet_profiles')
-            .update({
-              verified: true,
-              bio: `[Verified License: ${trimmed}]`,
-            })
-            .eq('user_id', currentUserId);
-
-          if (updateError) {
-            console.error('❌ [AuthService] Fallback vet_profiles update error:', updateError);
-            throw new ApiError(error.message || updateError.message, 400);
-          }
-        } else {
-          throw new ApiError(error.message, 400);
-        }
-      }
-
-      // Ensure doctor has default availability in vet_availability table
-      try {
-        const currentUserId = useAuthStore.getState().user?.id;
-        if (currentUserId) {
-          const { data: vProfile } = await supabase
-            .from('vet_profiles')
-            .select('id')
-            .eq('user_id', currentUserId)
-            .maybeSingle();
-
-          if (vProfile?.id) {
-            const { count } = await supabase
-              .from('vet_availability')
-              .select('*', { count: 'exact', head: true })
-              .eq('vet_id', vProfile.id);
-
-            if (!count || count === 0) {
-              const defaultWindows = [1, 2, 3, 4, 5].map((weekday) => ({
-                vet_id: vProfile.id,
-                weekday,
-                start_minute: 540,
-                end_minute: 1020,
-              }));
-              await supabase.from('vet_availability').insert(defaultWindows);
-            }
-          }
-        }
-      } catch (availErr) {
-        console.warn('⚠️ [AuthService] Seed default availability notice:', availErr);
-      }
-
-      // Update auth store user state immediately
-      const currentUser = useAuthStore.getState().user;
-      if (currentUser) {
-        useAuthStore.getState().setUser({
-          ...currentUser,
-          isVetVerified: true,
-        });
-      }
-
-      console.info('✅ [AuthService] Veterinarian license successfully verified!');
-      return true;
-    } catch (err) {
-      throw this.sanitizeError(err);
+      if (error) throw new ApiError(error.message, 400);
+    } catch (error) {
+      throw this.sanitizeError(error);
     }
   }
 

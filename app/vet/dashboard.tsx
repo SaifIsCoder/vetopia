@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Pressable, Alert, Switch } from 'react-native';
 import {
   Stethoscope,
@@ -38,8 +38,6 @@ export default function VetDashboardScreen() {
   const [verifying, setVerifying] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
-  const isVerified = user?.isVetVerified === true;
-
   // 1. Data Hooks
   const {
     data: upcomingAppointments,
@@ -60,6 +58,16 @@ export default function VetDashboardScreen() {
   } = useAppointments('past');
 
   const { data: myVet, refetch: refetchVet, isRefetching: isRefetchingVet } = useMyVetProfile();
+  const isVerified = myVet?.verified ?? user?.isVetVerified === true;
+
+  useEffect(() => {
+    if (user && myVet && myVet.verified !== user.isVetVerified) {
+      const { user: currentUser, setUser } = useAuthStore.getState();
+      if (currentUser?.id === user.id) {
+        setUser({ ...currentUser, isVetVerified: myVet.verified });
+      }
+    }
+  }, [myVet, user]);
 
   const updateVetMutation = useUpdateMyVetProfile();
   const cancelMutation = useCancelAppointment();
@@ -83,7 +91,7 @@ export default function VetDashboardScreen() {
     ]);
   };
 
-  const handleVerifyLicense = async () => {
+  const handleRequestLicenseReview = async () => {
     if (!licenseNumber.trim()) {
       setVerificationError('Please enter your veterinary license number.');
       return;
@@ -91,16 +99,14 @@ export default function VetDashboardScreen() {
     setVerificationError(null);
     setVerifying(true);
     try {
-      await authService.verifyLicense(licenseNumber.trim());
-      await refetchVet();
+      await authService.requestLicenseReview(licenseNumber.trim());
+      setLicenseNumber('');
       Alert.alert(
-        'License Verified',
-        'Your medical credentials have been verified. Consultation rooms and digital prescription features are now fully activated.',
+        'License Submitted',
+        'An administrator will review your license. Refresh this screen to check your approval status.',
       );
     } catch (err: any) {
-      setVerificationError(
-        err?.message || 'Verification failed. Please check the number and try again.',
-      );
+      setVerificationError(err?.message || 'Could not submit your license for review.');
     } finally {
       setVerifying(false);
     }
@@ -196,8 +202,8 @@ export default function VetDashboardScreen() {
                 Medical License Verification Required
               </Text>
               <Text variant="caption" color={colors.inkSoft} style={styles.pendingDescription}>
-                Telemedicine consultation rooms and digital prescription creation are locked until
-                your veterinary medical license is approved.
+                Submit your veterinary license number for administrator review. Consultations and
+                prescriptions become available after approval.
               </Text>
 
               {verificationError ? (
@@ -221,8 +227,8 @@ export default function VetDashboardScreen() {
                   leftIcon={<ShieldCheck size={18} color={colors.primaryDark} />}
                 />
                 <Button
-                  title={verifying ? 'Verifying License...' : 'Verify License Instantly'}
-                  onPress={handleVerifyLicense}
+                  title={verifying ? 'Submitting License…' : 'Submit for Review'}
+                  onPress={handleRequestLicenseReview}
                   disabled={verifying || !licenseNumber.trim()}
                   loading={verifying}
                   style={styles.verifyButton}

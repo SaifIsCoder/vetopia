@@ -1,6 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
-import { handleTelemedicineTokenRequest, defaultSupabase } from './telemedicineTokenHandler';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { handleTelemedicineTokenRequest, createUserSupabase } from './telemedicineTokenHandler';
 import { pushDispatcher } from './pushNotificationDispatcher';
 import { handleTriageChatRequest } from './ai/triageHandler';
 
@@ -68,8 +69,9 @@ export function createTelemedicineServer() {
         });
       }
 
-      const jwt = authHeader.split(' ')[1];
-      const { data: userData, error: userError } = await defaultSupabase.auth.getUser(jwt);
+      const jwt = authHeader.slice(7).trim();
+      const supabase = createUserSupabase(jwt);
+      const { data: userData, error: userError } = await supabase.auth.getUser(jwt);
 
       if (userError || !userData?.user) {
         return res.status(401).json({
@@ -89,21 +91,10 @@ export function createTelemedicineServer() {
       const safePlatform =
         platform === 'ios' || platform === 'android' || platform === 'web' ? platform : 'android';
 
-      const { data, error } = await defaultSupabase
-        .from('device_tokens')
-        .upsert(
-          {
-            user_id: userData.user.id,
-            token: token.trim(),
-            platform: safePlatform,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-            last_used_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,token' },
-        )
-        .select()
-        .single();
+      const { data, error } = await supabase.rpc('register_device_token', {
+        p_token: token.trim(),
+        p_platform: safePlatform,
+      });
 
       if (error) {
         return res.status(500).json({
@@ -127,43 +118,37 @@ export function createTelemedicineServer() {
     }
   });
 
-  // POST /api/v1/notifications/reminders/run
-  v1.post('/notifications/reminders/run', async (_req: Request, res: Response) => {
+  const requireWorker = (req: Request, res: Response, next: NextFunction) => {
+    const expected = process.env.NOTIFICATION_WORKER_SECRET;
+    const provided = req.get('authorization');
+    const digest = (value: string) => createHash('sha256').update(value).digest();
+    if (
+      !expected ||
+      !provided ||
+      !timingSafeEqual(digest(provided), digest(`Bearer ${expected}`))
+    ) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHENTICATED' } });
+    }
+    return next();
+  };
+
+  v1.post('/notifications/reminders/run', requireWorker, async (_req, res) => {
+    if (!pushDispatcher) return res.status(503).json({ success: false });
     try {
       const processedCount = await pushDispatcher.runAppointmentReminderWorker();
-      return res.status(200).json({
-        success: true,
-        processedCount,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err: any) {
-      return res.status(500).json({
-        success: false,
-        error: {
-          message: err?.message || 'Failed to execute reminder worker.',
-          code: 'INTERNAL_SERVER_ERROR',
-        },
-      });
+      return res.json({ success: true, processedCount, timestamp: new Date().toISOString() });
+    } catch {
+      return res.status(500).json({ success: false, error: { code: 'REMINDER_WORKER_ERROR' } });
     }
   });
 
-  // POST /api/v1/notifications/dispatch-pending
-  v1.post('/notifications/dispatch-pending', async (_req: Request, res: Response) => {
+  v1.post('/notifications/dispatch-pending', requireWorker, async (_req, res) => {
+    if (!pushDispatcher) return res.status(503).json({ success: false });
     try {
       const dispatchedCount = await pushDispatcher.dispatchPendingNotifications();
-      return res.status(200).json({
-        success: true,
-        dispatchedCount,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err: any) {
-      return res.status(500).json({
-        success: false,
-        error: {
-          message: err?.message || 'Failed to dispatch pending notifications.',
-          code: 'INTERNAL_SERVER_ERROR',
-        },
-      });
+      return res.json({ success: true, dispatchedCount, timestamp: new Date().toISOString() });
+    } catch {
+      return res.status(500).json({ success: false, error: { code: 'PUSH_DISPATCH_ERROR' } });
     }
   });
 
@@ -186,16 +171,22 @@ if (require.main === module) {
   app.listen(port, () => {
     console.info(`[AppServer] Express listening on http://localhost:${port}`);
 
-    // Standalone local development fallback runner:
-    // In production environments, scheduled jobs are invoked externally via durable schedulers
-    // (e.g. Supabase pg_cron, Kubernetes CronJob, or AWS EventBridge) to avoid in-memory state loss.
-    setInterval(() => {
-      pushDispatcher.runAppointmentReminderWorker().catch((err) => {
-        console.warn('[AppServer] Background reminder worker error:', err);
-      });
-      pushDispatcher.dispatchPendingNotifications().catch((err) => {
-        console.warn('[AppServer] Background outbox dispatcher error:', err);
-      });
-    }, 60000);
+    // Use a scheduler in production. Local worker runs require explicit database credentials.
+    if (pushDispatcher && process.env.NODE_ENV !== 'production') {
+      const worker = pushDispatcher;
+      let running = false;
+      setInterval(async () => {
+        if (running) return;
+        running = true;
+        try {
+          await worker.runAppointmentReminderWorker();
+          await worker.dispatchPendingNotifications();
+        } catch {
+          console.warn('[AppServer] Background notification worker failed.');
+        } finally {
+          running = false;
+        }
+      }, 60_000);
+    }
   });
 }

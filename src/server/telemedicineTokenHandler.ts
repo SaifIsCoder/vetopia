@@ -28,6 +28,13 @@ export const defaultSupabase: SupabaseClient = createClient(
   },
 );
 
+export function createUserSupabase(jwt: string): SupabaseClient {
+  return createClient(serverSupabaseUrl, serverSupabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 export interface LivekitServerConfig {
   apiKey?: string;
   apiSecret?: string;
@@ -108,7 +115,7 @@ export async function handleTelemedicineTokenRequest(params: {
   const {
     authorizationHeader,
     body,
-    supabaseClient = defaultSupabase,
+    supabaseClient: injectedClient,
     livekitConfig,
     currentTimestamp = Date.now(),
   } = params;
@@ -140,6 +147,8 @@ export async function handleTelemedicineTokenRequest(params: {
       },
     };
   }
+
+  const supabaseClient = injectedClient ?? createUserSupabase(jwt);
 
   // 2. Resolve caller identity from Supabase Auth
   const { data: userData, error: userError } = await supabaseClient.auth.getUser(jwt);
@@ -250,12 +259,22 @@ export async function handleTelemedicineTokenRequest(params: {
   // 6. Look up consulting veterinarian to check vet ownership
   const { data: vetProfile } = await supabaseClient
     .from('vet_profiles')
-    .select('id, name, user_id')
+    .select('id, name, user_id, verified')
     .eq('id', appt.vet_id)
     .maybeSingle();
 
   const isPetParent = authUserId === appt.pet_parent_id;
   const isVet = !!vetProfile?.user_id && authUserId === vetProfile.user_id;
+
+  if (isVet && vetProfile.verified !== true) {
+    return {
+      statusCode: 403,
+      body: {
+        success: false,
+        error: { message: 'Veterinarian approval is required.', code: 'VET_NOT_APPROVED' },
+      },
+    };
+  }
 
   // 7. Enforce participant authorization
   if (!isPetParent && !isVet) {
@@ -339,39 +358,14 @@ export async function handleTelemedicineTokenRequest(params: {
 
     const token = await at.toJwt();
 
-    // Trigger #3: Doctor entered consultation room -> Notify pet parent
     if (isVet) {
       try {
-        await supabaseClient.from('notifications').insert({
-          user_id: appt.pet_parent_id,
-          type: 'doctor_entered_consultation',
-          title: 'Doctor Has Joined Consultation',
-          body: `Dr. ${vetProfile?.name || 'Your veterinarian'} is in the consultation room. Please enter to begin.`,
-          data: {
-            kind: 'doctor_entered_consultation',
-            appointmentId: appt.id,
-            deepLink: `vetopia://consult/${appt.id}`,
-          },
-          pushed_at: new Date().toISOString(),
+        const { error } = await supabaseClient.rpc('notify_doctor_entered_consultation', {
+          p_appointment_id: appt.id,
         });
-
-        const { pushDispatcher } = await import('./pushNotificationDispatcher');
-        await pushDispatcher.dispatchPushToUser(appt.pet_parent_id, {
-          title: 'Doctor Has Joined Consultation',
-          body: `Dr. ${vetProfile?.name || 'Your veterinarian'} is in the consultation room. Please enter to begin.`,
-          data: {
-            kind: 'doctor_entered_consultation',
-            appointmentId: appt.id,
-            deepLink: `vetopia://consult/${appt.id}`,
-          },
-          priority: 'high',
-          channelId: 'consultations',
-        });
-      } catch (notifErr) {
-        console.warn(
-          '[TelemedicineTokenHandler] Doctor-entered notification dispatch failed:',
-          notifErr,
-        );
+        if (error) throw error;
+      } catch {
+        console.warn('[TelemedicineTokenHandler] Could not enqueue doctor-entry notification.');
       }
     }
 

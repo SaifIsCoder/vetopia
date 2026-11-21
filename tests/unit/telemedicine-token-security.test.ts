@@ -83,6 +83,7 @@ describe('Telemedicine Token Authorization & Security (FR-TELE-001 / API-TELE-00
                           id: 'vet-profile-1',
                           name: 'Dr. Sarah Mitchell',
                           user_id: 'user-vet-1',
+                          verified: true,
                         },
                   error: null,
                 }),
@@ -107,6 +108,7 @@ describe('Telemedicine Token Authorization & Security (FR-TELE-001 / API-TELE-00
         }
         return { select: jest.fn() };
       }),
+      rpc: jest.fn().mockResolvedValue({ data: true, error: null }),
     } as any;
   };
 
