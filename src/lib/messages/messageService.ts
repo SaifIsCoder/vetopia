@@ -72,7 +72,7 @@ export class MessageService {
 
           if (otherParticipant) {
             const { data: prof } = await supabase
-              .from('profiles')
+              .from('profile_directory')
               .select('id, full_name, avatar_url')
               .eq('id', otherParticipant.user_id)
               .maybeSingle();
@@ -182,7 +182,7 @@ export class MessageService {
 
       if (otherParticipant) {
         const { data: prof } = await supabase
-          .from('profiles')
+          .from('profile_directory')
           .select('id, full_name, avatar_url')
           .eq('id', otherParticipant.user_id)
           .maybeSingle();

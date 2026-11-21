@@ -31,7 +31,6 @@ jest.mock('expo-notifications', () => ({
 
 describe('Notifications & Push Delivery Security & Dispatch Tests (MVP-08)', () => {
   const validParentId = '11111111-1111-1111-1111-111111111111';
-  const validVetUserId = '22222222-2222-2222-2222-222222222222';
   const attackerUserId = '99999999-9999-9999-9999-999999999999';
   const appointmentId = '33333333-3333-3333-3333-333333333333';
   const notificationId = '44444444-4444-4444-4444-444444444444';
@@ -318,127 +317,91 @@ describe('Notifications & Push Delivery Security & Dispatch Tests (MVP-08)', () 
     });
 
     test('9.3 15-Minute reminder worker idempotently executes process_appointment_reminders RPC', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: 2, error: null });
+
+      expect(await dispatcher.runAppointmentReminderWorker()).toBe(2);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('process_appointment_reminders');
+      expect(mockSupabase.from).not.toHaveBeenCalled();
+    });
+
+    test('9.4 Propagates reminder RPC errors so the scheduler can detect failure', async () => {
+      const error = new Error('Database unavailable');
+      mockSupabase.rpc.mockResolvedValue({ data: null, error });
+
+      await expect(dispatcher.runAppointmentReminderWorker()).rejects.toBe(error);
+    });
+
+    const mockClaimedNotification = () => {
       mockSupabase.rpc.mockResolvedValue({
         data: [
           {
-            notification_id: 'notif-1',
-            recipient_user_id: validParentId,
-            notification_title: 'Consultation Starting Soon',
-            notification_body: 'Starts in 15 minutes',
-            notification_data: { appointmentId },
-          },
-          {
-            notification_id: 'notif-2',
-            recipient_user_id: validVetUserId,
-            notification_title: 'Upcoming Consultation in 15 Minutes',
-            notification_body: 'Starts in 15 minutes',
-            notification_data: { appointmentId },
+            id: 'notif-pending-1',
+            user_id: validParentId,
+            type: 'appointment_confirmed',
+            title: 'Appointment Booked',
+            body: 'Your appointment is confirmed.',
+            data: { appointmentId },
+            push_claim_id: 'lease-1',
           },
         ],
         error: null,
       });
-
-      // Mock token retrieval and notification pushed_at update for both users
-      mockSupabase.from.mockReturnValue({
+      const claimIdFilter = jest.fn().mockReturnValue({
         select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
-        update: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+          maybeSingle: jest
+            .fn()
+            .mockResolvedValue({ data: { id: 'notif-pending-1' }, error: null }),
         }),
       });
-
-      const count = await dispatcher.runAppointmentReminderWorker();
-      expect(count).toBe(2);
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('process_appointment_reminders');
-    });
-
-    test('9.4 Reminder worker returns 0 when no reminders pending or error occurs', async () => {
-      mockSupabase.rpc.mockResolvedValue({
-        data: [],
-        error: null,
-      });
-
-      const count = await dispatcher.runAppointmentReminderWorker();
-      expect(count).toBe(0);
-    });
-
-    test('9.5 dispatchPendingNotifications claims un-pushed notifications and dispatches via Expo', async () => {
       const mockUpdate = jest.fn().mockReturnValue({
-        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+        eq: jest.fn().mockReturnValue({ eq: claimIdFilter }),
       });
-
       mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'notifications') {
-          return {
-            select: jest.fn().mockReturnValue({
-              is: jest.fn().mockReturnValue({
-                order: jest.fn().mockReturnValue({
-                  limit: jest.fn().mockResolvedValue({
-                    data: [
-                      {
-                        id: 'notif-pending-1',
-                        user_id: validParentId,
-                        type: 'appointment_confirmed',
-                        title: 'Appointment Booked',
-                        body: 'Your appointment is confirmed.',
-                        data: { appointmentId },
-                      },
-                    ],
-                    error: null,
-                  }),
-                }),
+        if (table === 'notifications') return { update: mockUpdate };
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({
+                data: [{ token: 'ExponentPushToken[user-device-1]', platform: 'android' }],
+                error: null,
               }),
             }),
-            update: mockUpdate,
-          };
-        }
-        if (table === 'device_tokens') {
-          return {
-            select: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                eq: jest.fn().mockResolvedValue({
-                  data: [{ token: 'ExponentPushToken[user-device-1]', platform: 'android' }],
-                  error: null,
-                }),
-              }),
-            }),
-          };
-        }
-        return {};
+          }),
+        };
       });
+      return { mockUpdate, claimIdFilter };
+    };
 
+    test('9.5 Finalizes push delivery under the current lease', async () => {
+      const { mockUpdate, claimIdFilter } = mockClaimedNotification();
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
-        json: async () => ({
-          data: [{ status: 'ok', id: 'ticket-1' }],
-        }),
+        json: async () => ({ data: [{ status: 'ok', id: 'ticket-1' }] }),
       });
 
-      const dispatched = await dispatcher.dispatchPendingNotifications();
-      expect(dispatched).toBe(1);
+      expect(await dispatcher.dispatchPendingNotifications()).toBe(1);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('claim_pending_push_notifications', {
+        p_limit: 20,
+      });
       expect(mockUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          pushed_at: expect.any(String),
-        }),
+        expect.objectContaining({ pushed_at: expect.any(String) }),
       );
+      expect(claimIdFilter).toHaveBeenCalledWith('push_claim_id', 'lease-1');
     });
 
-    test('9.6 dispatchPendingNotifications gracefully returns 0 when no un-pushed notifications exist', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          is: jest.fn().mockReturnValue({
-            order: jest.fn().mockReturnValue({
-              limit: jest.fn().mockResolvedValue({ data: [], error: null }),
-            }),
-          }),
-        }),
-      });
+    test('9.6 Leaves failed deliveries available for retry when the lease expires', async () => {
+      const { mockUpdate } = mockClaimedNotification();
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 503 });
 
-      const count = await dispatcher.dispatchPendingNotifications();
-      expect(count).toBe(0);
+      expect(await dispatcher.dispatchPendingNotifications()).toBe(0);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    test('9.7 Returns zero when another worker has claimed all pending records', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+
+      expect(await dispatcher.dispatchPendingNotifications()).toBe(0);
+      expect(mockSupabase.from).not.toHaveBeenCalled();
     });
   });
 

@@ -9,6 +9,8 @@ This document specifies the PostgreSQL relational database schema for the **Veto
 | Table Name | Status in Repository | Purpose in Mobile MVP |
 | :--- | :--- | :--- |
 | `public.profiles` | `[EXISTING]` | User identity, username, full name, avatar, bio, location |
+| `public.profile_directory` | `[VIEW]` | Public profile ID, display name, and avatar projection |
+| `public.vet_license_requests` | `[PHASE 1]` | Private pending credentials and administrator decisions |
 | `public.user_roles` | `[EXISTING]` | RBAC role binding (`pet_parent`, `vet`, `admin`) |
 | `public.vet_profiles` | `[EXISTING]` | Doctor specialties, license verification, pricing, rating |
 | `public.vet_availability` | `[EXISTING]` | Weekly recurring consulting windows (weekday 0–6, minutes) |
@@ -130,10 +132,10 @@ This document specifies the PostgreSQL relational database schema for the **Veto
   * `created_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
   * `updated_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
 * **Constraints & Indexes:**
-  * `appointments_vet_scheduled_slot_idx` (`UNIQUE INDEX ON public.appointments (vet_id, starts_at) WHERE status = 'scheduled'`) — Guarantees atomic race-condition protection against double-booking active slots, while allowing cancelled slots to be freed and re-booked.
+  * `appointments_vet_scheduled_no_overlap` excludes intersecting scheduled time ranges for the same vet, with adjacent visits and cancelled rows allowed.
 * **Server-Side Security RPCs:**
-  * `public.book_appointment(...)`: Atomic reservation function (`SECURITY DEFINER`, search_path set). Verifies authenticated user, enforces pet ownership (`pets.owner_id = auth.uid()`), checks vet acceptance and 15-minute advance buffer, creates appointment record with status `'scheduled'`, and raises 23505 conflict on race condition.
-  * `public.cancel_appointment(...)`: Secure cancellation function (`SECURITY DEFINER`). Verifies participant identity (`pet_parent_id = auth.uid()` or vet owner), sets status to `'cancelled'`, frees the slot index, and flags late cancellation (< 2 hours).
+  * `public.book_appointment(...)`: Atomic reservation function (`SECURITY DEFINER`, search_path set). Verifies authenticated user, enforces pet ownership (`pets.owner_id = auth.uid()`), checks vet approval and acceptance, validates the published slot, duration, 15-minute minimum advance, and 30-day booking horizon, creates an appointment record with status `'scheduled'`, and raises 23505 conflict on race condition.
+  * `public.cancel_appointment(...)`: Secure cancellation function (`SECURITY DEFINER`). Verifies participant identity (`pet_parent_id = auth.uid()` or vet owner), sets a scheduled visit to `'cancelled'`, frees its time range, and flags late cancellation (< 2 hours).
 
 
 ---
@@ -273,3 +275,7 @@ This document specifies the PostgreSQL relational database schema for the **Veto
   * `sent_at` (`TIMESTAMPTZ`, NOT NULL, Default: `NOW()`)
 * **Constraints:** `PRIMARY KEY (appointment_id, reminder_type)` (guarantees idempotency of 15m consultation reminders)
 
+
+### Phase 1 notification changes
+
+The reminder function queues reminders in `public.notifications` and returns a count. Only the worker's `service_role` can invoke it or claim pending push records. `push_claim_id` and `push_claim_until` record a time-limited dispatch lease. Authenticated recipients can read their notifications and update only `read` and `read_at`. See [Phase 1 rollout and validation](./rls-security.md#phase-1-rollout-and-validation).

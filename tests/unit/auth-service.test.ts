@@ -632,13 +632,13 @@ describe('AuthService (Supabase Integration)', () => {
     });
   });
 
-  describe('Instant Medical License Verification', () => {
+  describe('Medical License Review', () => {
     test('Rejects empty or too short medical license number', async () => {
-      await expect(authService.verifyLicense('')).rejects.toThrow(ValidationError);
-      await expect(authService.verifyLicense('AB')).rejects.toThrow(ValidationError);
+      await expect(authService.requestLicenseReview('')).rejects.toThrow(ValidationError);
+      await expect(authService.requestLicenseReview('AB')).rejects.toThrow(ValidationError);
     });
 
-    test('Successfully verifies medical license and updates isVetVerified in authStore', async () => {
+    test('Submits a trimmed license without granting approval', async () => {
       useAuthStore.getState().setUser({
         id: 'vet-user-1',
         email: 'doc@vetopia.com',
@@ -650,16 +650,15 @@ describe('AuthService (Supabase Integration)', () => {
       });
 
       (supabase.rpc as jest.Mock).mockResolvedValueOnce({
-        data: { id: 'vp-1', verified: true },
+        data: null,
         error: null,
       });
 
-      const success = await authService.verifyLicense('VET-12345');
-      expect(success).toBe(true);
-      expect(supabase.rpc).toHaveBeenCalledWith('verify_doctor_license', {
-        license_number: 'VET-12345',
+      await authService.requestLicenseReview(' VET-12345 ');
+      expect(supabase.rpc).toHaveBeenCalledWith('request_vet_license_review', {
+        p_license_number: 'VET-12345',
       });
-      expect(useAuthStore.getState().user?.isVetVerified).toBe(true);
+      expect(useAuthStore.getState().user?.isVetVerified).toBe(false);
     });
   });
 });
