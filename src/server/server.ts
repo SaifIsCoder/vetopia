@@ -4,6 +4,16 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { handleTelemedicineTokenRequest, createUserSupabase } from './telemedicineTokenHandler';
 import { pushDispatcher } from './pushNotificationDispatcher';
 import { handleTriageChatRequest } from './ai/triageHandler';
+import { authRouter } from './routes/authRoutes';
+import { petRouter } from './routes/petRoutes';
+import { farmRouter, clinicRouter } from './routes/farmClinicRoutes';
+import { clubRouter } from './routes/clubRoutes';
+import { aiRouter } from './routes/aiRoutes';
+import { paymentRouter } from './routes/paymentRoutes';
+import { telemedicineRouter } from './routes/telemedicineRoutes';
+import { adoptionRouter } from './routes/adoptionRoutes';
+import { marketplaceRouter } from './routes/marketplaceRoutes';
+import { adminRouter } from './routes/adminRoutes';
 
 export function createTelemedicineServer() {
   const app = express();
@@ -161,6 +171,19 @@ export function createTelemedicineServer() {
   v1.post('/ai/triage-chat', (req: Request, res: Response) => {
     return handleTriageChatRequest(req, res);
   });
+
+  // Mount The Pets Club Global Modular Sub-Routers
+  v1.use('/auth', authRouter);
+  v1.use('/pets', petRouter);
+  v1.use('/farms', farmRouter);
+  v1.use('/clinics', clinicRouter);
+  v1.use('/clubs', clubRouter);
+  v1.use('/ai', aiRouter);
+  v1.use('/payments', paymentRouter);
+  v1.use('/telemedicine', telemedicineRouter);
+  v1.use('/adoption', adoptionRouter);
+  v1.use('/marketplace', marketplaceRouter);
+  v1.use('/admin', adminRouter);
 
   // Mount API v1 router
   app.use('/api/v1', v1);

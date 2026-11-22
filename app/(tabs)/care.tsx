@@ -11,6 +11,12 @@ import {
   PawPrint,
   AlertCircle,
   Users,
+  ShoppingBag,
+  Heart,
+  Sparkles,
+  Stethoscope,
+  Tractor,
+  Crown,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -248,6 +254,132 @@ export default function CareScreen() {
                 <Heading level={4}>24/7 AI Veterinary Triage</Heading>
                 <Text variant="bodySm" color={colors.muted}>
                   Gemini symptom checker & emergency detection
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        {/* Vet Marketplace */}
+        <TouchableOpacity
+          onPress={() => router.push('/marketplace' as any)}
+          activeOpacity={0.8}
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: '#FEF3C7' }]}>
+                <ShoppingBag size={20} color="#D97706" />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Vet Marketplace</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Vet-approved nutrition, toys, accessories & multi-currency shop
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        {/* Shelter Pet Adoption */}
+        <TouchableOpacity
+          onPress={() => router.push('/adoption' as any)}
+          activeOpacity={0.8}
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: '#FCE7F3' }]}>
+                <Heart size={20} color="#DB2777" />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Shelter Pet Adoption</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Find rescue animals, take compatibility quiz & apply to adopt
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        {/* Smart Care Recommendations */}
+        <TouchableOpacity
+          onPress={() => router.push('/ai/recommendations' as any)}
+          activeOpacity={0.8}
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: '#EDE9FE' }]}>
+                <Sparkles size={20} color="#7C3AED" />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>AI Care Recommendations</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Tailored nutrition, life-stage diets & doctor specialty guidance
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        {/* Second Opinion Review */}
+        <TouchableOpacity
+          onPress={() => router.push('/consult/second-opinion' as any)}
+          activeOpacity={0.8}
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: '#E0F2FE' }]}>
+                <Stethoscope size={20} color="#0284C7" />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Specialist Second Opinion</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Independent video and diagnostic review for surgeries and lab results
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        {/* VIP Care Membership */}
+        <TouchableOpacity
+          onPress={() => router.push('/memberships' as any)}
+          activeOpacity={0.8}
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.primary }]}>
+                <Crown size={20} color={colors.ink} />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>VIP Care Membership</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  $29/yr: 1 free consultation, 10% discounts & priority triage queue
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+          </Card>
+        </TouchableOpacity>
+
+        {/* Farm & Clinic Registrations */}
+        <TouchableOpacity
+          onPress={() => router.push('/registration/dairy' as any)}
+          activeOpacity={0.8}
+        >
+          <Card style={styles.menuCard}>
+            <View style={styles.menuRow}>
+              <View style={[styles.menuIconContainer, { backgroundColor: '#ECFDF5' }]}>
+                <Tractor size={20} color="#059669" />
+              </View>
+              <View style={styles.menuContent}>
+                <Heading level={4}>Dairy & Poultry Farm Registration</Heading>
+                <Text variant="bodySm" color={colors.muted}>
+                  Register dairy herd, commercial poultry flocks & clinic facilities
                 </Text>
               </View>
               <ChevronRight size={18} color={colors.muted} />

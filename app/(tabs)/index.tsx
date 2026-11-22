@@ -13,6 +13,9 @@ import {
   Clock,
   Video,
   Users,
+  ShoppingBag,
+  Heart,
+  Crown,
 } from 'lucide-react-native';
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -393,6 +396,91 @@ export default function HomeScreen() {
           <ChevronRight size={18} color={colors.ink} />
         </Card>
       </TouchableOpacity>
+
+      {/* The Pets Club Ecosystem Services */}
+      <View style={styles.section}>
+        <Heading level={3} style={styles.sectionTitle}>
+          The Pets Club Services
+        </Heading>
+
+        <View style={styles.quickGrid}>
+          {/* Marketplace */}
+          <TouchableOpacity
+            style={styles.gridItem}
+            onPress={() => router.push('/marketplace' as any)}
+            activeOpacity={0.8}
+          >
+            <Card style={styles.actionCard}>
+              <View style={[styles.actionIconBox, { backgroundColor: '#FEF3C7' }]}>
+                <ShoppingBag size={20} color="#D97706" />
+              </View>
+              <Heading level={4} style={styles.actionTitle}>
+                Marketplace
+              </Heading>
+              <Text variant="caption" color={colors.inkSoft} style={styles.actionSubtitle}>
+                Vet-approved nutrition & gear
+              </Text>
+            </Card>
+          </TouchableOpacity>
+
+          {/* Shelter Adoption */}
+          <TouchableOpacity
+            style={styles.gridItem}
+            onPress={() => router.push('/adoption' as any)}
+            activeOpacity={0.8}
+          >
+            <Card style={styles.actionCard}>
+              <View style={[styles.actionIconBox, { backgroundColor: '#FCE7F3' }]}>
+                <Heart size={20} color="#DB2777" />
+              </View>
+              <Heading level={4} style={styles.actionTitle}>
+                Adoption
+              </Heading>
+              <Text variant="caption" color={colors.inkSoft} style={styles.actionSubtitle}>
+                Rescue pets & AI compatibility
+              </Text>
+            </Card>
+          </TouchableOpacity>
+
+          {/* Smart AI Recommendations */}
+          <TouchableOpacity
+            style={styles.gridItem}
+            onPress={() => router.push('/ai/recommendations' as any)}
+            activeOpacity={0.8}
+          >
+            <Card style={styles.actionCard}>
+              <View style={[styles.actionIconBox, { backgroundColor: '#EDE9FE' }]}>
+                <Sparkles size={20} color="#7C3AED" />
+              </View>
+              <Heading level={4} style={styles.actionTitle}>
+                Smart Picks
+              </Heading>
+              <Text variant="caption" color={colors.inkSoft} style={styles.actionSubtitle}>
+                AI diets & specialty picks
+              </Text>
+            </Card>
+          </TouchableOpacity>
+
+          {/* VIP Care Membership */}
+          <TouchableOpacity
+            style={styles.gridItem}
+            onPress={() => router.push('/memberships' as any)}
+            activeOpacity={0.8}
+          >
+            <Card style={styles.actionCard}>
+              <View style={[styles.actionIconBox, { backgroundColor: '#EBF8D3' }]}>
+                <Crown size={20} color={colors.primaryDark} />
+              </View>
+              <Heading level={4} style={styles.actionTitle}>
+                VIP Care
+              </Heading>
+              <Text variant="caption" color={colors.inkSoft} style={styles.actionSubtitle}>
+                $29/yr: Free consult & 10% off
+              </Text>
+            </Card>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Featured Veterinarians */}
       {featuredVets.length > 0 && (

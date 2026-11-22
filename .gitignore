@@ -24,6 +24,7 @@ coverage/
 # System Files
 .DS_Store
 *.pem
+supabase/.temp/
 
 # IDE / Editor
 .idea/

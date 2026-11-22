@@ -27,7 +27,11 @@ import {
   Info,
   Trash2,
   FileText,
+  Globe,
+  ShieldAlert,
 } from 'lucide-react-native';
+import { LanguageSwitcherModal } from '../../src/components/localization/LanguageSwitcherModal';
+import { useLocalization } from '../../src/lib/localization/i18n';
 
 import { Screen } from '../../src/components/layout/Screen';
 import { Heading } from '../../src/components/ui/Heading';
@@ -96,6 +100,8 @@ export default function ProfileSettingsScreen() {
   // Account deletion and privacy compliance modal states
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+  const { currentLanguage } = useLocalization();
 
   // Load hardware biometrics and notification preferences on mount
   useEffect(() => {
@@ -522,6 +528,62 @@ export default function ProfileSettingsScreen() {
         </View>
       </Card>
 
+      {/* Language & Global Localization Card */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionIconContainer}>
+            <Globe size={22} color={colors.primaryDark} />
+          </View>
+          <View style={styles.sectionHeaderText}>
+            <Heading level={4}>Language & Localization</Heading>
+            <Text variant="bodySm" color={colors.muted}>
+              Active Language: {currentLanguage} (11+ Supported)
+            </Text>
+          </View>
+        </View>
+
+        <Text variant="bodySm" color={colors.inkSoft} style={styles.sectionDescription}>
+          The Pets Club operates globally in 11+ languages including English, Spanish, French, German, Portuguese, Russian, Chinese, Japanese, Hindi, Arabic, and Urdu.
+        </Text>
+
+        <Divider style={styles.cardDivider} />
+
+        <Button
+          title={`Switch Platform Language (${currentLanguage})`}
+          variant="outline"
+          leftIcon={<Globe size={18} color={colors.ink} />}
+          onPress={() => setIsLanguageModalOpen(true)}
+        />
+      </Card>
+
+      {/* Admin Moderation & Operations Card */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionIconContainer}>
+            <ShieldAlert size={22} color={colors.primaryDark} />
+          </View>
+          <View style={styles.sectionHeaderText}>
+            <Heading level={4}>Admin & Operations Console</Heading>
+            <Text variant="bodySm" color={colors.muted}>
+              Content moderation, seller & clinic verification
+            </Text>
+          </View>
+        </View>
+
+        <Text variant="bodySm" color={colors.inkSoft} style={styles.sectionDescription}>
+          Review user abuse reports, moderate flagged posts, and approve licensed veterinarians, clinics, and verified sellers.
+        </Text>
+
+        <Divider style={styles.cardDivider} />
+
+        <Button
+          title="Open Admin Dashboard"
+          variant="secondary"
+          leftIcon={<ShieldAlert size={18} color={colors.white} />}
+          onPress={() => router.push('/admin/dashboard' as any)}
+        />
+      </Card>
+
       {/* 5. Application & Privacy Information */}
       <Card style={styles.sectionCard}>
         <Heading level={4} style={styles.appInfoTitle}>
@@ -735,6 +797,10 @@ export default function ProfileSettingsScreen() {
           />
         </ScrollView>
       </Modal>
+      <LanguageSwitcherModal
+        visible={isLanguageModalOpen}
+        onClose={() => setIsLanguageModalOpen(false)}
+      />
     </Screen>
   );
 }
