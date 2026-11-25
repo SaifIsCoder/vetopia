@@ -120,7 +120,9 @@ export default function PrescriptionsArchiveScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => {
+                refetch();
+              }}
               tintColor={colors.primaryDark}
               colors={[colors.primaryDark]}
             />

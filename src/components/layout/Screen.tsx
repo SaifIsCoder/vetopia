@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, ViewStyle, ScrollViewProps, StatusBar } from 'react-native';
+import { View, ScrollView, StyleSheet, ViewStyle, ScrollViewProps } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from './SafeAreaView';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
@@ -31,7 +32,7 @@ export const Screen: React.FC<ScreenProps> = ({
 }) => {
   return (
     <SafeAreaView backgroundColor={backgroundColor} style={style} testID={testID}>
-      <StatusBar barStyle="dark-content" backgroundColor={backgroundColor} />
+      <StatusBar style="dark" />
       {header}
       {scrollable ? (
         <ScrollView

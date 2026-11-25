@@ -411,8 +411,10 @@ describe('AI Gateway Route Integration (POST /api/v1/ai/triage-chat)', () => {
       clientReq.end();
     });
 
-    // Wait 100ms for Express server to handle res socket close event
-    await new Promise((r) => setTimeout(r, 100));
+    // Wait for Express server to handle res socket close event
+    for (let i = 0; i < 20 && !capturedSignal?.aborted; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
 
     expect(capturedSignal).toBeDefined();
     expect(capturedSignal?.aborted).toBe(true);

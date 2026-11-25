@@ -83,7 +83,9 @@ export default function MessagesScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => {
+                refetch();
+              }}
               tintColor={colors.primaryDark}
               colors={[colors.primaryDark]}
             />

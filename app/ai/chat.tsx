@@ -174,7 +174,7 @@ export default function AIChatScreen({ emergencyNumber }: AIChatScreenProps = {}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
           ListFooterComponent={
-            showSuggestions ? <SuggestionChips onSelect={handleSelectSuggestion} /> : null
+            showSuggestions ? <SuggestionChips onSelect={handleSelectSuggestion} /> : undefined
           }
         />
 
