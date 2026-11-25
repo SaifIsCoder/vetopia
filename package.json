@@ -82,5 +82,8 @@
     "react-test-renderer": "19.3.0",
     "typescript": "~6.0.3"
   },
+  "overrides": {
+    "@testing-library/react-native": "$@testing-library/react-native"
+  },
   "private": true
 }
